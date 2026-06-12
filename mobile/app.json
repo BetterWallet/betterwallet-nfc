@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "Better Wallet",
+    "slug": "mobile",
+    "version": "1.0.0",
+    "android": {
+      "package": "com.betterwallet"
+    }
+  }
+}
