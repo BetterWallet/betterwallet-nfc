@@ -31,6 +31,14 @@ export function ReviewScreen({ navigation }: Props) {
   }
 
   const { review } = state;
+  const screenTitle = review.title ?? 'Confirm Transaction';
+  const subtitle =
+    review.subtitle ??
+    (review.kind === 'transfer'
+      ? undefined
+      : review.kind === 'approval'
+        ? 'Approve token access before submitting the swap.'
+        : 'Swap transaction will be signed with your Better Wallet over NFC.');
 
   const onConfirm = () => {
     setError(null);
@@ -41,10 +49,11 @@ export function ReviewScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={s.root}>
       <View style={s.wrap}>
-        <Text style={s.title}>Confirm Transaction</Text>
+        <Text style={s.title}>{screenTitle}</Text>
+        {subtitle ? <Text style={s.subtitle}>{subtitle}</Text> : null}
 
         <View style={s.card}>
-          <Text style={s.label}>To Address</Text>
+          <Text style={s.label}>{review.kind === 'transfer' ? 'To Address' : 'Contract'}</Text>
           <Text style={s.value}>{maskAddress(review.to)}</Text>
         </View>
 
@@ -54,6 +63,16 @@ export function ReviewScreen({ navigation }: Props) {
         </View>
 
         <View style={s.summary}>
+          {review.swapMeta ? (
+            <>
+              <Row
+                label="Pair"
+                value={`${review.swapMeta.tokenInSymbol} → ${review.swapMeta.tokenOutSymbol}`}
+              />
+              <Row label="Routing" value={review.swapMeta.routing} />
+              <Row label="Slippage" value={`${review.swapMeta.slippagePercent}%`} />
+            </>
+          ) : null}
           <Row label="Amount" value={`${review.amountEth} ETH`} />
           <Row label="Amount (USD)" value={`$${review.amountUsd}`} />
           <Row label="Estimated Fee" value={`${review.estimatedFeeEth} ETH`} />
@@ -99,6 +118,13 @@ const s = StyleSheet.create({
     color: '#e5e2e1',
     fontWeight: '700',
     marginBottom: 20,
+  },
+  subtitle: {
+    marginTop: -10,
+    marginBottom: 20,
+    color: '#a9a9a9',
+    fontSize: 14,
+    lineHeight: 20,
   },
   card: {
     backgroundColor: '#1d1d1d',

@@ -35,6 +35,11 @@ export function AssetsScreen({ navigation }: Props) {
     navigation.navigate('Send');
   };
 
+  const goToSwap = () => {
+    reset();
+    navigation.navigate('Swap');
+  };
+
   const loadPortfolio = useCallback(
     async (refresh = false) => {
       if (!wallet?.address) {
@@ -175,8 +180,8 @@ export function AssetsScreen({ navigation }: Props) {
           <Pressable style={s.actionButton} onPress={goToSend}>
             <Text style={s.actionText}>Send</Text>
           </Pressable>
-          <Pressable style={s.mainAction} onPress={goToSend}>
-            <Text style={s.mainActionText}>+</Text>
+          <Pressable style={s.mainAction} onPress={goToSwap}>
+            <Text style={s.mainActionText}>⇄</Text>
           </Pressable>
           <Pressable style={s.actionButton}>
             <Text style={s.actionText}>Receive</Text>
@@ -384,6 +389,21 @@ const s = StyleSheet.create({
     fontSize: 28,
     lineHeight: 30,
     fontWeight: '700',
+  },
+  uniswapBadge: {
+    marginTop: 10,
+    alignSelf: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#6f3558',
+    backgroundColor: '#2b1724',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  uniswapBadgeText: {
+    color: '#f3c5e5',
+    fontSize: 12,
+    fontWeight: '600',
   },
   listHeader: {
     marginTop: 28,

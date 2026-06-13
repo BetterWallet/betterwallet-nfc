@@ -2,6 +2,7 @@ import json
 import time
 
 from eth_account import Account
+from eth_account.messages import encode_typed_data
 
 import sign_wallet
 from pairing_wallet import SEPOLIA_CHAIN_ID, load_or_create_keypair
@@ -15,6 +16,11 @@ except ImportError as exc:
     raise RuntimeError(
         "Missing dependency 'clearsig'. Install with: pip install --ignore-requires-python clearsig"
     ) from exc
+
+try:
+    from eth_account.messages import encode_structured_data
+except ImportError:
+    encode_structured_data = None
 
 
 def log(message: str) -> None:
@@ -176,18 +182,73 @@ def sign_request_payload(sign_request: dict, keypair: dict[str, str]) -> str | N
     return signed_raw_tx
 
 
-def build_sign_response(request: dict, keypair: dict[str, str]) -> dict | None:
-    if request.get("type") != "sign_request":
-        raise ValueError(f"Unsupported payload type: {request.get('type')}")
-    if "id" not in request:
-        raise ValueError("Missing sign_request id")
-    if "tx" not in request:
-        raise ValueError("Missing sign_request tx")
+def _stringify_json_compact(value: object) -> str:
+    try:
+        return json.dumps(value, separators=(",", ":"), sort_keys=True)
+    except TypeError:
+        return str(value)
 
-    signature = sign_request_payload(request, keypair)
-    if signature is None:
+
+def sign_typed_data_payload(request: dict, keypair: dict[str, str]) -> str | None:
+    typed_data = request.get("typedData")
+    if not isinstance(typed_data, dict):
+        raise ValueError("typed_data_sign_request typedData must be an object")
+
+    domain = typed_data.get("domain")
+    primary_type = typed_data.get("primaryType")
+    message = typed_data.get("message")
+    if not isinstance(domain, dict):
+        raise ValueError("typedData.domain must be an object")
+    if not isinstance(message, dict):
+        raise ValueError("typedData.message must be an object")
+    if not isinstance(primary_type, str) or not primary_type:
+        raise ValueError("typedData.primaryType must be a non-empty string")
+
+    log("--- Typed data review ---")
+    log(f"Signer: {keypair['address']}")
+    log(f"Primary type: {primary_type}")
+    log(f"Domain: {_stringify_json_compact(domain)}")
+    log(f"Message: {_stringify_json_compact(message)}")
+
+    if not confirm_signing():
+        log("Typed data signing rejected by user.")
         return None
-    return {"id": request["id"], "type": "signed_tx", "signature": signature}
+
+    try:
+        signable_message = encode_typed_data(full_message=typed_data)
+    except TypeError:
+        if encode_structured_data is None:
+            raise
+        signable_message = encode_structured_data(primitive=typed_data)
+
+    signed = Account.sign_message(signable_message, keypair["private_key"])
+    signature_hex = signed.signature.hex()
+    signature = signature_hex if signature_hex.startswith("0x") else f"0x{signature_hex}"
+    log(f"Typed data request id: {request['id']}")
+    log(f"Typed data signature: {signature}")
+    return signature
+
+
+def build_sign_response(request: dict, keypair: dict[str, str]) -> dict | None:
+    if "id" not in request:
+        raise ValueError("Missing request id")
+
+    payload_type = request.get("type")
+    if payload_type == "sign_request":
+        if "tx" not in request:
+            raise ValueError("Missing sign_request tx")
+        signature = sign_request_payload(request, keypair)
+        if signature is None:
+            return None
+        return {"id": request["id"], "type": "signed_tx", "signature": signature}
+
+    if payload_type == "typed_data_sign_request":
+        signature = sign_typed_data_payload(request, keypair)
+        if signature is None:
+            return None
+        return {"id": request["id"], "type": "typed_data_signature", "signature": signature}
+
+    raise ValueError(f"Unsupported payload type: {payload_type}")
 
 
 def main() -> None:

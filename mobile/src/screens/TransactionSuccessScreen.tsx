@@ -45,9 +45,17 @@ export function TransactionSuccessScreen({ navigation }: Props) {
           <Text style={s.check}>✓</Text>
         </View>
 
-        <Text style={s.title}>Transaction Sent</Text>
+        <Text style={s.title}>
+          {review.kind === 'swap' ? 'Swap Submitted' : review.kind === 'approval' ? 'Approval Submitted' : 'Transaction Sent'}
+        </Text>
         <Text style={s.subtitle}>
-          Your {review.amountEth} ETH transaction is now in flight on Ethereum.
+          {review.kind === 'swap'
+            ? `${review.swapMeta?.amountInDisplay ?? review.amountEth} ${
+                review.swapMeta?.tokenInSymbol ?? 'ETH'
+              } is now swapping on Ethereum Sepolia.`
+            : review.kind === 'approval'
+              ? 'Token approval is now in flight on Ethereum Sepolia.'
+              : `Your ${review.amountEth} ETH transaction is now in flight on Ethereum.`}
         </Text>
 
         <View style={s.card}>

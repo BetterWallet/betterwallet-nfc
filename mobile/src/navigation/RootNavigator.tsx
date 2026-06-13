@@ -6,6 +6,7 @@ import { ReviewScreen } from '../screens/ReviewScreen';
 import { ScanCardScreen } from '../screens/ScanCardScreen';
 import { SendScreen } from '../screens/SendScreen';
 import { SetupWalletScreen } from '../screens/SetupWalletScreen';
+import { SwapScreen } from '../screens/SwapScreen';
 import { TransactionSuccessScreen } from '../screens/TransactionSuccessScreen';
 import { useWallet } from '../state/wallet';
 
@@ -13,6 +14,7 @@ export type RootStackParamList = {
   Setup: undefined;
   Assets: undefined;
   Send: undefined;
+  Swap: undefined;
   Review: undefined;
   Scan: undefined;
   Success: undefined;
@@ -56,6 +58,7 @@ export function RootNavigator() {
     >
       <Stack.Screen name="Assets" component={AssetsScreen} />
       <Stack.Screen name="Send" component={SendScreen} />
+      <Stack.Screen name="Swap" component={SwapScreen} />
       <Stack.Screen name="Review" component={ReviewScreen} />
       <Stack.Screen name="Scan" component={ScanCardScreen} />
       <Stack.Screen name="Success" component={TransactionSuccessScreen} />

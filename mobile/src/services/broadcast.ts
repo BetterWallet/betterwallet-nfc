@@ -1,5 +1,10 @@
 import { JsonRpcProvider, keccak256, toUtf8Bytes } from 'ethers';
-import type { ReviewDetails, SignedTxMessage, TxResult } from '../types/send';
+import type {
+  ReviewDetails,
+  SignedTxMessage,
+  TxResult,
+  TypedDataSignatureMessage,
+} from '../types/send';
 
 const DEFAULT_RPC_URL = 'https://ethereum-sepolia-rpc.publicnode.com';
 const DEFAULT_EXPLORER_BASE_URL = 'https://sepolia.etherscan.io/tx/';
@@ -13,6 +18,19 @@ export function parseSignedTxMessage(json: string): SignedTxMessage {
   return {
     id: parsed.id,
     type: 'signed_tx',
+    signature: parsed.signature,
+  };
+}
+
+export function parseTypedDataSignatureMessage(json: string): TypedDataSignatureMessage {
+  const parsed = JSON.parse(json) as Partial<TypedDataSignatureMessage>;
+  if (parsed.type !== 'typed_data_signature' || !parsed.id || !parsed.signature) {
+    throw new Error('Malformed typed-data signature payload received from NFC signer.');
+  }
+
+  return {
+    id: parsed.id,
+    type: 'typed_data_signature',
     signature: parsed.signature,
   };
 }

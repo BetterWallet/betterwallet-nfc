@@ -3,7 +3,7 @@ import { DeviceEventEmitter, NativeModules } from 'react-native';
 
 const { HCEModule } = NativeModules;
 
-type SignedTxCallback = (json: string) => void;
+type SignedPayloadCallback = (json: string) => void;
 
 export function useHCE() {
   const listenerRef = useRef<ReturnType<typeof DeviceEventEmitter.addListener> | null>(null);
@@ -12,7 +12,7 @@ export function useHCE() {
     HCEModule.setPayload(JSON.stringify(payload));
   }, []);
 
-  const waitForSignedTx = useCallback((callback: SignedTxCallback) => {
+  const waitForSignedPayload = useCallback((callback: SignedPayloadCallback) => {
     listenerRef.current?.remove();
     listenerRef.current = DeviceEventEmitter.addListener('HCE_SIGNED_TX', (json: string) => {
       listenerRef.current?.remove();
@@ -25,19 +25,36 @@ export function useHCE() {
     listenerRef.current = null;
   }, []);
 
-  const waitForSignedTxOnce = useCallback((timeoutMs = 30000): Promise<string> => {
+  const waitForSignedPayloadOnce = useCallback(
+    (timeoutMs = 30000, timeoutMessage = 'Timed out waiting for signed payload over NFC.'): Promise<string> => {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         clearSignedTxListener();
-        reject(new Error('Timed out waiting for signed transaction over NFC.'));
+        reject(new Error(timeoutMessage));
       }, timeoutMs);
 
-      waitForSignedTx((json) => {
+      waitForSignedPayload((json) => {
         clearTimeout(timeout);
         resolve(json);
       });
     });
-  }, [clearSignedTxListener, waitForSignedTx]);
+    },
+    [clearSignedTxListener, waitForSignedPayload],
+  );
+
+  const waitForSignedTx = useCallback(
+    (callback: SignedPayloadCallback) => {
+      waitForSignedPayload(callback);
+    },
+    [waitForSignedPayload],
+  );
+
+  const waitForSignedTxOnce = useCallback(
+    (timeoutMs = 30000): Promise<string> => {
+      return waitForSignedPayloadOnce(timeoutMs, 'Timed out waiting for signed transaction over NFC.');
+    },
+    [waitForSignedPayloadOnce],
+  );
 
   useEffect(() => {
     return () => {
@@ -45,5 +62,12 @@ export function useHCE() {
     };
   }, []);
 
-  return { loadPayload, waitForSignedTx, waitForSignedTxOnce, clearSignedTxListener };
+  return {
+    loadPayload,
+    waitForSignedPayload,
+    waitForSignedPayloadOnce,
+    waitForSignedTx,
+    waitForSignedTxOnce,
+    clearSignedTxListener,
+  };
 }
