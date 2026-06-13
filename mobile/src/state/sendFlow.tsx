@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useMemo, useReducer } from 'react';
+import { getSendDefaults } from '../config/sendDefaults';
 import type { FlowStage, ReviewDetails, SendDraft, SignedTxMessage, TxResult } from '../types/send';
 
 interface SendFlowState {
@@ -30,11 +31,13 @@ interface SendFlowContextValue {
   reset: () => void;
 }
 
+const sendDefaults = getSendDefaults();
+
 const initialState: SendFlowState = {
   stage: 'compose',
   draft: {
-    to: '',
-    amountEth: '',
+    to: sendDefaults.to,
+    amountEth: sendDefaults.amountEth,
   },
   review: null,
   signedTx: null,

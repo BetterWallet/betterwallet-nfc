@@ -45,10 +45,14 @@ export function createReviewDetails(draft: SendDraft): ReviewDetails {
   };
 }
 
-export function buildSignRequest(review: ReviewDetails): SignRequestMessage {
+export function buildSignRequest(
+  review: ReviewDetails,
+  fromAddress?: string | null,
+): SignRequestMessage {
   const unsignedTxPayload = {
     version: 1,
     chain: 'ethereum',
+    from: fromAddress ?? null,
     to: review.to,
     valueWei: review.amountWei,
     gasLimit: '21000',

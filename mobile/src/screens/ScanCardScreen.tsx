@@ -6,6 +6,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { parseSignedTxMessage, broadcastSignedResult } from '../services/broadcast';
 import { buildSignRequest } from '../services/ethTransaction';
 import { useSendFlow } from '../state/sendFlow';
+import { useWallet } from '../state/wallet';
 import { useHCE } from '../useHCE';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Scan'>;
@@ -18,6 +19,7 @@ function delay(ms: number) {
 
 export function ScanCardScreen({ navigation }: Props) {
   const { state, setStage, setSignedTx, setResult, setError, reset } = useSendFlow();
+  const { wallet } = useWallet();
   const { loadPayload, waitForSignedTxOnce, clearSignedTxListener } = useHCE();
 
   const [localError, setLocalError] = useState<string | null>(null);
@@ -51,7 +53,7 @@ export function ScanCardScreen({ navigation }: Props) {
           throw new Error('No transaction available for signing.');
         }
 
-        const signRequest = buildSignRequest(review);
+        const signRequest = buildSignRequest(review, wallet?.address ?? null);
         const signedPayloadPromise = waitForSignedTxOnce(45000);
         setStage('tap1');
         loadPayload(signRequest);
@@ -104,6 +106,7 @@ export function ScanCardScreen({ navigation }: Props) {
     setSignedTx,
     setStage,
     state.review,
+    wallet?.address,
     waitForSignedTxOnce,
   ]);
 
