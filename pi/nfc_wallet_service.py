@@ -16,10 +16,22 @@ from protocol import read_payload, select_aid, write_payload
 from setup import nfc, setup
 from wallet_keys import SEPOLIA_CHAIN_ID, SOLANA_CLUSTER, EvmKeypair, SolanaKeypair
 
+try:
+    from clearsig import Registry, translate_with_registry, update_registry
+    from clearsig._calldata_digest import calldata_digest_hex
+    from clearsig._validate import sanitize_for_terminal
+except ImportError:
+    Registry = None  # type: ignore[assignment]
+    translate_with_registry = None  # type: ignore[assignment]
+    update_registry = None  # type: ignore[assignment]
+    calldata_digest_hex = None  # type: ignore[assignment]
+    sanitize_for_terminal = None  # type: ignore[assignment]
+
 STATUS_TIMEOUT = "timeout"
 STATUS_STOPPED = "stopped"
 STATUS_READY = "ready"
 STATUS_ERROR = "error"
+_registry = None
 
 
 @dataclass
@@ -29,6 +41,10 @@ class SignReview:
     title: str
     lines: list[str]
     raw_preview: str
+
+
+def log(message: str) -> None:
+    print(f"[clear-signing] {message}")
 
 
 def parse_int(value: object, field_name: str) -> int:
@@ -52,6 +68,72 @@ def format_eth_from_wei(value_wei: int) -> str:
         return f"{whole}"
     frac = str(remainder).rjust(18, "0").rstrip("0")
     return f"{whole}.{frac}"
+
+
+def normalize_calldata(unsigned_tx: dict[str, Any]) -> str:
+    raw = unsigned_tx.get("data")
+    if raw is None:
+        raw = unsigned_tx.get("calldata")
+    if raw is None:
+        return "0x"
+    if not isinstance(raw, str):
+        raise ValueError("Unsigned tx field data/calldata must be a hex string")
+
+    normalized = raw.strip()
+    if not normalized:
+        return "0x"
+    if normalized.startswith("0x") or normalized.startswith("0X"):
+        hex_body = normalized[2:]
+    else:
+        hex_body = normalized
+    if len(hex_body) % 2 != 0:
+        raise ValueError("Calldata hex length must be even")
+    bytes.fromhex(hex_body)
+    return f"0x{hex_body.lower()}"
+
+
+def ensure_registry():
+    global _registry
+    if Registry is None:
+        return None
+    if _registry is not None:
+        return _registry
+    try:
+        _registry = Registry.load()
+    except Exception:
+        if update_registry is not None:
+            try:
+                log("ERC-7730 registry not found — downloading...")
+                update_registry()
+                _registry = Registry.load()
+            except Exception:
+                _registry = None
+    return _registry
+
+
+def format_max_fees(gas_limit: int, max_fee_per_gas_wei: int) -> str:
+    max_fee_total_wei = gas_limit * max_fee_per_gas_wei
+    return f"{format_eth_from_wei(max_fee_total_wei)} ETH ({max_fee_total_wei} wei)"
+
+
+def translation_title_and_lines(translated: Any) -> tuple[str, list[str]]:
+    if sanitize_for_terminal is None:
+        return "Review contract call", []
+
+    intent = sanitize_for_terminal(str(getattr(translated, "intent", "Contract call")))
+    entity = sanitize_for_terminal(str(getattr(translated, "entity", "")))
+    lines: list[str] = []
+    if entity:
+        lines.append(f"dApp: {entity}")
+
+    for field in getattr(translated, "fields", []):
+        label = sanitize_for_terminal(str(getattr(field, "label", "")).strip())
+        value = sanitize_for_terminal(str(getattr(field, "value", "")).strip())
+        if not label or not value:
+            continue
+        lines.append(f"{label}: {value}")
+
+    return f"Review {intent}", lines
 
 
 class NfcWalletService:
@@ -185,6 +267,7 @@ class NfcWalletService:
         return self._build_evm_signed_response(request, evm_keypair)
 
     def build_reject_response(self, request: dict[str, Any]) -> dict[str, Any]:
+        log("Transaction rejected by user.")
         return {
             "id": request.get("id"),
             "type": "sign_rejected",
@@ -222,25 +305,129 @@ class NfcWalletService:
         gas_limit = parse_int(unsigned_tx["gasLimit"], "gasLimit")
         max_fee = parse_int(unsigned_tx["maxFeePerGasWei"], "maxFeePerGasWei")
         max_priority_fee = parse_int(unsigned_tx["maxPriorityFeePerGasWei"], "maxPriorityFeePerGasWei")
-        data_hex = str(unsigned_tx.get("data") or unsigned_tx.get("calldata") or "0x")
+        calldata_hex = normalize_calldata(unsigned_tx)
+        max_fees_label = format_max_fees(gas_limit, max_fee)
+
+        log("--- Transaction review ---")
+        log(f"Signer: {keypair.address}")
+        log(f"To: {unsigned_tx['to']}")
+        log(f"Chain ID: {SEPOLIA_CHAIN_ID}")
+        log(f"Nonce: {nonce}")
+        log(f"Value: {value_wei} wei ({format_eth_from_wei(value_wei)} ETH)")
+        log(f"Gas limit: {gas_limit}")
+        log(f"Max fee per gas: {max_fee} wei ({max_fee / 1e9:.9f} gwei)")
+        log(f"Max priority fee per gas: {max_priority_fee} wei ({max_priority_fee / 1e9:.9f} gwei)")
+        log(f"Unsigned tx JSON: {json.dumps(unsigned_tx, sort_keys=True)}")
+        log(f"Raw calldata: {calldata_hex}")
+
+        digest: str
+        if calldata_digest_hex is not None:
+            digest = calldata_digest_hex(calldata_hex)
+        else:
+            digest_body = hashlib.sha256(bytes.fromhex(calldata_hex[2:])).hexdigest()
+            digest = f"0x{digest_body}"
+        log(f"ERC-8213 calldata digest: {digest}")
+
+        common_lines = [
+            f"Network: Ethereum Sepolia ({SEPOLIA_CHAIN_ID})",
+            f"From: {keypair.address}",
+        ]
+        calldata_bytes = bytes.fromhex(calldata_hex[2:])
+        if len(calldata_bytes) < 4:
+            log("Intent: Plain ETH transfer")
+            lines = [
+                *common_lines,
+                f"Amount: {format_eth_from_wei(value_wei)} ETH ({value_wei} wei)",
+                f"To: {unsigned_tx['to']}",
+                f"Max Fees: {max_fees_label}",
+            ]
+            return SignReview(
+                request=request,
+                chain="evm",
+                title="Review transfer",
+                lines=lines,
+                raw_preview="",
+            )
+
+        if translate_with_registry is not None and sanitize_for_terminal is not None:
+            selector_hex = calldata_hex[2:10]
+            log(
+                "Attempting ERC-7730 decode "
+                f"(chain={SEPOLIA_CHAIN_ID}, to={unsigned_tx['to']}, selector=0x{selector_hex}, "
+                f"calldata_bytes={len(calldata_bytes)}, request_id={request.get('id')})"
+            )
+            try:
+                registry = ensure_registry()
+                if registry is not None:
+                    translated = translate_with_registry(
+                        registry,
+                        calldata_hex,
+                        to=unsigned_tx["to"],
+                        chain_id=SEPOLIA_CHAIN_ID,
+                        from_address=keypair.address,
+                    )
+                    entity_str = (
+                        f" ({sanitize_for_terminal(translated.entity)})" if translated.entity else ""
+                    )
+                    log(f"Intent: {sanitize_for_terminal(translated.intent)}{entity_str}")
+                    log(f"Function: {sanitize_for_terminal(translated.function_signature)}")
+                    for field in translated.fields:
+                        log(
+                            f"  {sanitize_for_terminal(field.label)}: "
+                            f"{sanitize_for_terminal(field.value)}"
+                        )
+                    title, translated_lines = translation_title_and_lines(translated)
+                    lines = [
+                        *common_lines,
+                        f"Contract: {unsigned_tx['to']}",
+                        *translated_lines,
+                        f"Max Fees: {max_fees_label}",
+                    ]
+                    return SignReview(
+                        request=request,
+                        chain="evm",
+                        title=title,
+                        lines=lines,
+                        raw_preview="",
+                    )
+                log(
+                    "ERC-7730 decode unavailable: registry is not loaded "
+                    "(missing local registry and/or update failed)."
+                )
+            except Exception as exc:  # noqa: BLE001
+                log(
+                    "ERC-7730 decode unavailable: "
+                    f"{type(exc).__name__}: {exc!s} "
+                    f"(to={unsigned_tx['to']}, selector=0x{selector_hex}, digest={digest})"
+                )
+        else:
+            log(
+                "ERC-7730 decode unavailable: clearsig translation deps are missing "
+                "(translate_with_registry or sanitize_for_terminal not importable)."
+            )
 
         lines = [
-            f"Request ID: {request['id']}",
-            f"Chain: Ethereum Sepolia ({SEPOLIA_CHAIN_ID})",
-            f"Signer: {keypair.address}",
-            f"To: {unsigned_tx['to']}",
-            f"Nonce: {nonce}",
-            f"Value: {value_wei} wei ({format_eth_from_wei(value_wei)} ETH)",
-            f"Gas Limit: {gas_limit}",
-            f"Max Fee/Gas: {max_fee} wei",
-            f"Max Priority Fee/Gas: {max_priority_fee} wei",
-            f"Calldata: {data_hex[:64]}{'...' if len(data_hex) > 64 else ''}",
+            *common_lines,
+            "Warning: Unable to decode contract call",
+            f"Contract: {unsigned_tx['to']}",
+            f"Value: {format_eth_from_wei(value_wei)} ETH ({value_wei} wei)",
+            f"Max Fees: {max_fees_label}",
+            f"Calldata Digest: {digest}",
         ]
-        raw_preview = json.dumps(unsigned_tx, indent=2, sort_keys=True)
+        raw_preview = json.dumps(
+            {
+                "unsignedTx": unsigned_tx,
+                "calldata": calldata_hex,
+                "nonce": nonce,
+                "maxPriorityFeePerGasWei": max_priority_fee,
+            },
+            indent=2,
+            sort_keys=True,
+        )
         return SignReview(
             request=request,
             chain="evm",
-            title="Sign Ethereum Transaction",
+            title="Blind signing warning",
             lines=lines,
             raw_preview=raw_preview,
         )
@@ -288,13 +475,15 @@ class NfcWalletService:
             ),
         }
 
-        data_hex = unsigned_tx.get("data") or unsigned_tx.get("calldata")
-        if isinstance(data_hex, str) and data_hex.strip():
+        data_hex = normalize_calldata(unsigned_tx)
+        if data_hex != "0x":
             tx_dict["data"] = data_hex
 
         signed = Account.sign_transaction(tx_dict, keypair.private_key)
         raw_hex = signed.raw_transaction.hex()
         signature = raw_hex if raw_hex.startswith("0x") else f"0x{raw_hex}"
+        log(f"Sign request id: {request['id']}")
+        log(f"Signed raw tx: {signature}")
         return {
             "id": request["id"],
             "type": "signed_tx",

@@ -131,10 +131,31 @@ def shorten_address(address: str, left: int = 8, right: int = 6) -> str:
 
 
 def wrap_text(text: str, font: pygame.font.Font, width: int) -> list[str]:
+    def split_long_word(word: str) -> list[str]:
+        chunks: list[str] = []
+        remainder = word
+        while remainder and font.size(remainder)[0] > width:
+            idx = len(remainder)
+            while idx > 1 and font.size(remainder[:idx])[0] > width:
+                idx -= 1
+            chunks.append(remainder[:idx])
+            remainder = remainder[idx:]
+        if remainder:
+            chunks.append(remainder)
+        return chunks
+
     words = text.split(" ")
     lines: list[str] = []
     current = ""
     for word in words:
+        if font.size(word)[0] > width:
+            parts = split_long_word(word)
+            if current:
+                lines.append(current)
+                current = ""
+            lines.extend(parts[:-1])
+            word = parts[-1]
+
         trial = word if not current else f"{current} {word}"
         if font.size(trial)[0] <= width:
             current = trial
@@ -182,6 +203,7 @@ class WalletGuiApp:
         self.worker_queue: queue.Queue[tuple[str, Any]] = queue.Queue()
         self.worker_thread: threading.Thread | None = None
         self.worker_stop_event: threading.Event | None = None
+        self.listen_mode = "idle"  # idle | passive | pairing
         self.pending_sign_request: dict[str, Any] | None = None
         self.pending_review: SignReview | None = None
 
@@ -223,10 +245,12 @@ class WalletGuiApp:
             self.worker_thread.join(timeout=0.3)
         self.worker_thread = None
         self.worker_stop_event = None
+        self.listen_mode = "idle"
 
-    def start_listen_worker(self) -> None:
+    def start_listen_worker(self, mode: str = "pairing") -> None:
         self.stop_worker()
         self.worker_stop_event = threading.Event()
+        self.listen_mode = mode
 
         def target() -> None:
             status, request = self.nfc_service.wait_for_json_request(stop_event=self.worker_stop_event)
@@ -263,13 +287,22 @@ class WalletGuiApp:
         self.worker_thread.start()
 
     def set_screen(self, screen_name: str) -> None:
+        if screen_name != SCREEN_NETWORK and self.listen_mode == "passive":
+            self.stop_worker()
         self.current_screen = screen_name
         self.error_message = ""
+        if screen_name == SCREEN_NETWORK:
+            self.ensure_passive_sign_listen()
+
+    def ensure_passive_sign_listen(self) -> None:
+        if self.worker_thread and self.worker_thread.is_alive():
+            return
+        self.start_listen_worker(mode="passive")
 
     def begin_pair_or_sign(self) -> None:
         self.status_message = "Ready to pair. Hold phone near wallet."
         self.log_lines.append("Waiting for NFC request")
-        self.start_listen_worker()
+        self.start_listen_worker(mode="pairing")
         self.set_screen(SCREEN_PAIRING)
 
     def handle_events(self) -> None:
@@ -310,11 +343,19 @@ class WalletGuiApp:
             if event_name == "listen_status":
                 status, detail = payload
                 if status == STATUS_TIMEOUT:
+                    if self.listen_mode == "passive":
+                        self.log_lines.append("Passive listen timed out; retrying")
+                        self.start_listen_worker(mode="passive")
+                        continue
                     self.status_message = "Timed out waiting for phone. Tap Pair to retry."
                     self.set_screen(SCREEN_STATUS)
                 elif status == STATUS_STOPPED:
                     self.set_screen(SCREEN_NETWORK)
                 else:
+                    if self.listen_mode == "passive":
+                        self.log_lines.append("Passive NFC error")
+                        self.start_listen_worker(mode="passive")
+                        continue
                     message = "NFC error."
                     if isinstance(detail, dict):
                         message = str(detail.get("message", message))
@@ -392,7 +433,7 @@ class WalletGuiApp:
         if pygame.Rect(270, 154, 32, 32).collidepoint(pos):
             self.clear_sign_scroll = max(0, self.clear_sign_scroll - 1)
         if pygame.Rect(270, 190, 32, 32).collidepoint(pos):
-            max_scroll = max(0, len(self.review_lines_cache) - 9)
+            max_scroll = max(0, len(self.review_lines_cache) - self.clear_sign_visible_line_count())
             self.clear_sign_scroll = min(max_scroll, self.clear_sign_scroll + 1)
 
     def handle_send_wait_press(self, pos: tuple[int, int]) -> None:
@@ -415,6 +456,13 @@ class WalletGuiApp:
     def clear_sign_button_rects(self) -> tuple[pygame.Rect, pygame.Rect]:
         y = HEIGHT - FOOTER_HEIGHT - 64
         return pygame.Rect(18, y, 138, 50), pygame.Rect(164, y, 138, 50)
+
+    def clear_sign_visible_line_count(self) -> int:
+        panel_height = 218
+        top_padding = 12
+        bottom_padding = 12
+        line_height = 22
+        return max(1, (panel_height - top_padding - bottom_padding) // line_height)
 
     def handle_pin_screen_press(self, pos: tuple[int, int]) -> None:
         for label, rect in self.pin_keypad_layout():
@@ -519,10 +567,11 @@ class WalletGuiApp:
         wrapped: list[str] = []
         for line in review.lines:
             wrapped.extend(wrap_text(line, self.fonts["small"], 238))
-        wrapped.append("")
-        wrapped.extend(wrap_text("Payload:", self.fonts["small"], 238))
-        for line in review.raw_preview.splitlines():
-            wrapped.extend(wrap_text(line, self.fonts["small"], 238))
+        if review.raw_preview.strip():
+            wrapped.append("")
+            wrapped.extend(wrap_text("Payload:", self.fonts["small"], 238))
+            for line in review.raw_preview.splitlines():
+                wrapped.extend(wrap_text(line, self.fonts["small"], 238))
         return wrapped
 
     def draw(self) -> None:
@@ -632,14 +681,27 @@ class WalletGuiApp:
         title = "Sign Transaction"
         if self.pending_review:
             title = self.pending_review.title
-        draw_text(self.screen, self.fonts["title"], title, TEXT_MAIN, (18, 70))
+
+        title_font = self.fonts["title"]
+        max_title_width = WIDTH - 36
+        if title_font.size(title)[0] > max_title_width:
+            title_font = self.fonts["h1"]
+        if title_font.size(title)[0] > max_title_width:
+            ellipsis = "..."
+            trimmed = title
+            while trimmed and title_font.size(trimmed + ellipsis)[0] > max_title_width:
+                trimmed = trimmed[:-1]
+            title = (trimmed + ellipsis) if trimmed else ellipsis
+
+        draw_text(self.screen, title_font, title, TEXT_MAIN, (18, 70))
         draw_text(self.screen, self.fonts["small"], "SECURITY LEVEL: HIGH", TEXT_DIM, (18, 106))
 
         panel = pygame.Rect(18, 126, 284, 218)
         draw_round_rect(self.screen, panel, CARD_BG, radius=16)
         pygame.draw.rect(self.screen, BORDER, panel, width=1, border_radius=16)
 
-        visible_lines = self.review_lines_cache[self.clear_sign_scroll : self.clear_sign_scroll + 9]
+        visible_count = self.clear_sign_visible_line_count()
+        visible_lines = self.review_lines_cache[self.clear_sign_scroll : self.clear_sign_scroll + visible_count]
         y = 138
         for line in visible_lines:
             draw_text(self.screen, self.fonts["small"], line, TEXT_MAIN, (30, y))
