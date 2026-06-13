@@ -1,17 +1,12 @@
 import base64
 import json
-import os
 import time
-import urllib.error
-import urllib.request
 
 from eth_account import Account
 
 from pairing_wallet import SEPOLIA_CHAIN_ID, load_or_create_keypair
 from protocol import read_payload, select_aid, write_payload
 from setup import nfc, setup
-
-DEFAULT_SEPOLIA_RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
 
 
 def log(message: str) -> None:
@@ -62,45 +57,13 @@ def parse_int(value: object, field_name: str) -> int:
     raise ValueError(f"Field {field_name} must be a string or number")
 
 
-def fetch_pending_nonce(address: str, rpc_url: str) -> int:
-    rpc_payload = {
-        "jsonrpc": "2.0",
-        "method": "eth_getTransactionCount",
-        "params": [address, "pending"],
-        "id": 1,
-    }
-    body = json.dumps(rpc_payload).encode("utf-8")
-    request = urllib.request.Request(
-        rpc_url,
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            decoded = json.loads(response.read().decode("utf-8"))
-    except urllib.error.URLError as exc:
-        raise ValueError(f"Failed to fetch nonce from RPC: {exc}") from exc
-
-    if "error" in decoded:
-        raise ValueError(f"RPC error while fetching nonce: {decoded['error']}")
-
-    nonce_hex = decoded.get("result")
-    if not isinstance(nonce_hex, str):
-        raise ValueError("RPC response for nonce did not include a valid result")
-
-    return int(nonce_hex, 16)
-
-
-def resolve_nonce(unsigned_tx: dict, signer_address: str) -> int:
+def resolve_nonce(unsigned_tx: dict) -> int:
     nonce_value = unsigned_tx.get("nonce")
-    if nonce_value is not None:
-        return parse_int(nonce_value, "nonce")
-
-    rpc_url = os.environ.get("SEPOLIA_RPC_URL", DEFAULT_SEPOLIA_RPC_URL)
-    nonce = fetch_pending_nonce(signer_address, rpc_url)
-    log(f"Resolved nonce from RPC ({rpc_url}): {nonce}")
-    return nonce
+    if nonce_value is None:
+        raise ValueError(
+            "Unsigned tx is missing nonce. Pi is offline and requires nonce in phone payload."
+        )
+    return parse_int(nonce_value, "nonce")
 
 
 def decode_unsigned_tx(sign_request: dict) -> dict:
@@ -139,7 +102,7 @@ def sign_request_payload(sign_request: dict, keypair: dict[str, str]) -> str:
     else:
         log("Unsigned tx has no from address; defaulting signer to keystore address")
 
-    nonce = resolve_nonce(unsigned_tx, signer_address)
+    nonce = resolve_nonce(unsigned_tx)
     tx_dict = {
         "type": 2,
         "chainId": SEPOLIA_CHAIN_ID,

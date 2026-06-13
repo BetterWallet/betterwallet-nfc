@@ -48,6 +48,7 @@ export function createReviewDetails(draft: SendDraft): ReviewDetails {
 export function buildSignRequest(
   review: ReviewDetails,
   fromAddress?: string | null,
+  nonce?: number | string | null,
 ): SignRequestMessage {
   const unsignedTxPayload = {
     version: 1,
@@ -58,7 +59,7 @@ export function buildSignRequest(
     gasLimit: '21000',
     maxFeePerGasWei: '30000000000',
     maxPriorityFeePerGasWei: '1500000000',
-    nonce: null,
+    nonce: nonce ?? null,
     createdAt: new Date().toISOString(),
   };
 

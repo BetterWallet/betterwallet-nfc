@@ -1,4 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { JsonRpcProvider } from 'ethers';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,6 +13,7 @@ import { useHCE } from '../useHCE';
 type Props = NativeStackScreenProps<RootStackParamList, 'Scan'>;
 
 const TAP1_HINT_MS = 2200;
+const DEFAULT_RPC_URL = 'https://ethereum-sepolia-rpc.publicnode.com';
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -53,7 +55,15 @@ export function ScanCardScreen({ navigation }: Props) {
           throw new Error('No transaction available for signing.');
         }
 
-        const signRequest = buildSignRequest(review, wallet?.address ?? null);
+        const signerAddress = wallet?.address;
+        if (!signerAddress) {
+          throw new Error('No paired wallet address available for nonce lookup.');
+        }
+
+        const provider = new JsonRpcProvider(DEFAULT_RPC_URL);
+        const nonce = await provider.getTransactionCount(signerAddress, 'pending');
+
+        const signRequest = buildSignRequest(review, signerAddress, nonce);
         const signedPayloadPromise = waitForSignedTxOnce(45000);
         setStage('tap1');
         loadPayload(signRequest);
