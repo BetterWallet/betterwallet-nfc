@@ -2,7 +2,7 @@ import time
 
 from pn532pi import Pn532, Pn532I2c
 
-PN532_I2C = Pn532I2c(Pn532I2c.RPI_BUS1)  # I2C1: SDA=GPIO2 (pin 3), SCL=GPIO3 (pin 5)
+PN532_I2C = Pn532I2c(Pn532I2c.RPI_BUS3)  # I2C3: SDA=GPIO6 (pin 31), SCL=GPIO7 (pin 26)
 nfc = Pn532(PN532_I2C)
 
 CUSTOM_AID = bytearray([0xF0, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06])

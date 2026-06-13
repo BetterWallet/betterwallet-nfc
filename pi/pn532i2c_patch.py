@@ -13,9 +13,10 @@ PN532_I2C_ADDRESS =  (0x48 >> 1)
 class Pn532I2c(Pn532Interface):
     RPI_BUS0 = 0
     RPI_BUS1 = 1
+    RPI_BUS3 = 3
 
     def __init__(self, bus: int):
-        assert bus in [self.RPI_BUS0, self.RPI_BUS1], "Bus number must be 1 or 0"
+        assert isinstance(bus, int) and bus >= 0, "Bus must be a non-negative integer"
         self._wire = None
         self._bus = bus
         self._command = 0
