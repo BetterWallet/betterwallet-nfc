@@ -34,7 +34,7 @@ export function ReviewScreen({ navigation }: Props) {
 
   const onConfirm = () => {
     setError(null);
-    setStage('tap1');
+    setStage('nfc');
     navigation.navigate('Scan');
   };
 

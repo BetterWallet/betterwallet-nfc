@@ -12,15 +12,10 @@ import { useHCE } from '../useHCE';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Scan'>;
 
-const TAP1_HINT_MS = 2200;
 const DEFAULT_RPC_URL = 'https://ethereum-sepolia-rpc.publicnode.com';
 
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export function ScanCardScreen({ navigation }: Props) {
-  const { state, setStage, setSignedTx, setResult, setError, reset } = useSendFlow();
+  const { state, setStage, setSignedTx, setResult, setError } = useSendFlow();
   const { wallet } = useWallet();
   const { loadPayload, waitForSignedTxOnce, clearSignedTxListener } = useHCE();
 
@@ -29,16 +24,23 @@ export function ScanCardScreen({ navigation }: Props) {
   const startedRef = useRef(false);
 
   const phaseLabel = useMemo(() => {
-    if (state.stage === 'tap1') {
-      return 'Tap 1';
-    }
-    if (state.stage === 'tap2') {
-      return 'Tap 2';
+    if (state.stage === 'nfc') {
+      return 'Signing';
     }
     if (state.stage === 'broadcasting') {
       return 'Broadcasting';
     }
     return 'Preparing';
+  }, [state.stage]);
+
+  const phaseHint = useMemo(() => {
+    if (state.stage === 'nfc') {
+      return 'Keep your Better Wallet near your phone until signing finishes.';
+    }
+    if (state.stage === 'broadcasting') {
+      return 'Submitting transaction to the network.';
+    }
+    return 'Getting ready to sign over NFC.';
   }, [state.stage]);
 
   useEffect(() => {
@@ -65,15 +67,9 @@ export function ScanCardScreen({ navigation }: Props) {
 
         const signRequest = buildSignRequest(review, signerAddress, nonce);
         const signedPayloadPromise = waitForSignedTxOnce(45000);
-        setStage('tap1');
+        setStage('nfc');
         loadPayload(signRequest);
 
-        await delay(TAP1_HINT_MS);
-        if (cancelled) {
-          return;
-        }
-
-        setStage('tap2');
         const signedJson = await signedPayloadPromise;
         if (cancelled) {
           return;
@@ -124,7 +120,7 @@ export function ScanCardScreen({ navigation }: Props) {
     startedRef.current = false;
     setLocalError(null);
     setError(null);
-    setStage('tap1');
+    setStage('nfc');
     setRunNonce((value) => value + 1);
   };
 
@@ -150,32 +146,31 @@ export function ScanCardScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={s.root}>
       <View style={s.wrap}>
-        <Text style={s.title}>Ready to Scan</Text>
+        <Text style={s.title}>Sign with Better Wallet</Text>
         <Text style={s.subtitle}>
-          Hold your Better Wallet in the middle of your phone.
+          Hold your Better Wallet near the back of your phone to sign this transaction.
         </Text>
 
         <View style={s.phaseCard}>
           <Text style={s.phase}>{phaseLabel}</Text>
-          <Text style={s.phaseHint}>
-            {state.stage === 'tap1' && 'Phone to Pi: sending sign request payload.'}
-            {state.stage === 'tap2' && 'Pi to Phone: waiting for signed payload.'}
-            {state.stage === 'broadcasting' && 'Submitting transaction result to network.'}
-          </Text>
+          <Text style={s.phaseHint}>{phaseHint}</Text>
           <ActivityIndicator color="#c8f323" size="large" style={s.spinner} />
         </View>
 
         {localError ? (
           <View style={s.errorCard}>
-            <Text style={s.errorTitle}>Flow error</Text>
+            <Text style={s.errorTitle}>NFC error</Text>
             <Text style={s.errorBody}>{localError}</Text>
+            <Text style={s.errorRetryHint}>
+              Hold your wallet near your phone and tap Retry to try again.
+            </Text>
           </View>
         ) : null}
 
         <View style={s.footer}>
           {localError ? (
             <Pressable style={s.primaryButton} onPress={onRetry}>
-              <Text style={s.primaryButtonText}>Retry Scan</Text>
+              <Text style={s.primaryButtonText}>Retry</Text>
             </Pressable>
           ) : null}
           <Pressable style={s.secondaryButton} onPress={onCancel}>
@@ -255,6 +250,11 @@ const s = StyleSheet.create({
     color: '#ffd8d3',
     fontSize: 14,
     lineHeight: 20,
+  },
+  errorRetryHint: {
+    color: '#d4a8a4',
+    fontSize: 13,
+    lineHeight: 19,
   },
   footer: {
     marginTop: 'auto',

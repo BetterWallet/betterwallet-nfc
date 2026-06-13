@@ -11,7 +11,7 @@ import { buildPairRequest, parsePairResponse } from '../services/pairing';
 import { useWallet } from '../state/wallet';
 import { useHCE } from '../useHCE';
 
-type PairPhase = 'idle' | 'tap1' | 'tap2' | 'saving';
+type PairPhase = 'idle' | 'pairing' | 'saving';
 
 interface NetworkOption {
   id: string;
@@ -24,10 +24,6 @@ const NETWORKS: NetworkOption[] = [
   { id: 'solana', label: 'Solana Devnet', sublabel: 'Cluster devnet' },
 ];
 
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export function SetupWalletScreen() {
   const { saveWallet } = useWallet();
   const { loadPayload, waitForSignedTxOnce, clearSignedTxListener } = useHCE();
@@ -38,15 +34,15 @@ export function SetupWalletScreen() {
   const isRunningRef = useRef(false);
 
   const phaseLabel = useMemo(() => {
-    if (phase === 'tap1') return 'Tap 1';
-    if (phase === 'tap2') return 'Tap 2';
+    if (phase === 'pairing') return 'Pairing';
     if (phase === 'saving') return 'Saving';
     return null;
   }, [phase]);
 
   const phaseHint = useMemo(() => {
-    if (phase === 'tap1') return 'Phone to wallet: sending pair request.';
-    if (phase === 'tap2') return 'Wallet to phone: waiting for response.';
+    if (phase === 'pairing') {
+      return 'Keep your Better Wallet near your phone until pairing finishes.';
+    }
     if (phase === 'saving') return 'Saving wallet profile to this device.';
     return null;
   }, [phase]);
@@ -61,11 +57,9 @@ export function SetupWalletScreen() {
 
     try {
       const request = buildPairRequest();
-      setPhase('tap1');
+      setPhase('pairing');
       loadPayload(request);
 
-      await wait(2200);
-      setPhase('tap2');
       const responseJson = await waitForSignedTxOnce(45000);
       const profile = parsePairResponse(responseJson);
 
@@ -146,17 +140,10 @@ export function SetupWalletScreen() {
               </View>
               <View style={s.stepText}>
                 <Text style={s.stepTitle}>Tap your hardware wallet</Text>
-                <Text style={s.stepHint}>Bring your Better Card to the back of your phone.</Text>
-              </View>
-            </View>
-            <View style={s.stepDivider} />
-            <View style={s.step}>
-              <View style={s.stepIconWrap}>
-                <Text style={s.stepIcon}>✓</Text>
-              </View>
-              <View style={s.stepText}>
-                <Text style={s.stepTitle}>Confirm on device</Text>
-                <Text style={s.stepHint}>Tap a second time to receive the signed response.</Text>
+                <Text style={s.stepHint}>
+                  Bring your Better Wallet to the back of your phone and keep it there until
+                  pairing completes.
+                </Text>
               </View>
             </View>
           </View>
@@ -172,8 +159,11 @@ export function SetupWalletScreen() {
 
         {error ? (
           <View style={s.errorCard}>
-            <Text style={s.errorTitle}>Pairing failed</Text>
+            <Text style={s.errorTitle}>NFC error</Text>
             <Text style={s.errorBody}>{error}</Text>
+            <Text style={s.errorRetryHint}>
+              Hold your wallet near your phone and tap Retry to try again.
+            </Text>
           </View>
         ) : null}
 
@@ -353,11 +343,6 @@ const s = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
   },
-  stepDivider: {
-    height: 1,
-    backgroundColor: '#2d2d2d',
-    marginVertical: 16,
-  },
 
   // Phase card
   phaseCard: {
@@ -402,6 +387,11 @@ const s = StyleSheet.create({
     color: '#ffd8d3',
     fontSize: 14,
     lineHeight: 20,
+  },
+  errorRetryHint: {
+    color: '#d4a8a4',
+    fontSize: 13,
+    lineHeight: 19,
   },
 
   // Footer

@@ -12,6 +12,7 @@ class CardService : HostApduService() {
 
         if (commandApdu[0] == 0x00.toByte() && commandApdu.getOrNull(1) == 0xA4.toByte()) {
             HCEState.writeBuffer = ByteArrayOutputStream()
+            emitEvent("HCE_NFC_SESSION", "active")
             return STATUS_OK
         }
 
@@ -37,9 +38,7 @@ class CardService : HostApduService() {
 
             0x04 -> {
                 val received = HCEState.writeBuffer.toByteArray()
-                HCEState.reactContext
-                    ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                    ?.emit("HCE_SIGNED_TX", String(received, Charsets.UTF_8))
+                emitEvent("HCE_SIGNED_TX", String(received, Charsets.UTF_8))
                 HCEState.writeBuffer = ByteArrayOutputStream()
                 STATUS_OK
             }
@@ -49,7 +48,13 @@ class CardService : HostApduService() {
     }
 
     override fun onDeactivated(reason: Int) {
-        // no-op
+        emitEvent("HCE_NFC_SESSION", "idle")
+    }
+
+    private fun emitEvent(name: String, payload: String) {
+        HCEState.reactContext
+            ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+            ?.emit(name, payload)
     }
 
     companion object {

@@ -1,8 +1,7 @@
 export type FlowStage =
   | 'compose'
   | 'review'
-  | 'tap1'
-  | 'tap2'
+  | 'nfc'
   | 'broadcasting'
   | 'success'
   | 'error';
