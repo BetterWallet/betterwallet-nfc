@@ -1,27 +1,110 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { formatTokenAmount, formatUsd } from '../services/portfolioFormatting';
+import { getPortfolio } from '../services/portfolio';
 import { useSendFlow } from '../state/sendFlow';
 import { useWallet } from '../state/wallet';
+import type { PortfolioAsset, PortfolioSnapshot } from '../types/portfolio';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Assets'>;
-
-const assets = [
-  { symbol: 'BTC', name: 'Bitcoin', balance: '0.124 BTC', usd: '$5,241.12', delta: '+2.4%' },
-  { symbol: 'ETH', name: 'Ethereum', balance: '1.42 ETH', usd: '$2,940.05', delta: '+5.1%' },
-  { symbol: 'NEO', name: 'Neo', balance: '24.5 NEO', usd: '$308.11', delta: '-0.8%' },
-];
 
 export function AssetsScreen({ navigation }: Props) {
   const { reset } = useSendFlow();
   const { wallet, clearWallet } = useWallet();
+  const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
+  const mountedRef = useRef(true);
 
   const goToSend = () => {
     reset();
     navigation.navigate('Send');
   };
+
+  const loadPortfolio = useCallback(
+    async (refresh = false) => {
+      if (!wallet?.address) {
+        return;
+      }
+
+      const requestId = requestIdRef.current + 1;
+      requestIdRef.current = requestId;
+
+      if (refresh) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+
+      try {
+        const nextPortfolio = await getPortfolio(wallet.address);
+        if (!mountedRef.current || requestIdRef.current !== requestId) {
+          return;
+        }
+        setPortfolio(nextPortfolio);
+        setError(null);
+      } catch (err) {
+        if (!mountedRef.current || requestIdRef.current !== requestId) {
+          return;
+        }
+        const message =
+          err instanceof Error ? err.message : 'Unable to load portfolio right now. Please retry.';
+        setError(message);
+      } finally {
+        if (!mountedRef.current || requestIdRef.current !== requestId) {
+          return;
+        }
+        if (refresh) {
+          setIsRefreshing(false);
+        } else {
+          setIsLoading(false);
+        }
+      }
+    },
+    [wallet?.address],
+  );
+
+  useEffect(() => {
+    if (!wallet?.address) {
+      return;
+    }
+    setPortfolio(null);
+    setError(null);
+    void loadPortfolio();
+  }, [loadPortfolio, wallet?.address]);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const assets = useMemo(
+    () => (portfolio?.assets ?? []).filter((asset) => asset.amount > 0),
+    [portfolio?.assets],
+  );
+  const totalBalanceLabel = portfolio ? formatUsd(portfolio.totalUsd) : '--';
+  const updatedAtLabel = useMemo(() => {
+    if (!portfolio?.updatedAt) {
+      return 'Live portfolio';
+    }
+    const date = new Date(portfolio.updatedAt);
+    return `Updated ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+  }, [portfolio?.updatedAt]);
 
   if (!wallet) {
     return (
@@ -36,9 +119,33 @@ export function AssetsScreen({ navigation }: Props) {
     );
   }
 
+  if (isLoading && !portfolio) {
+    return (
+      <SafeAreaView style={s.root}>
+        <View style={s.loadingWrap}>
+          <ActivityIndicator color="#c8f323" size="large" />
+          <Text style={s.loadingText}>Loading portfolio...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={s.root}>
-      <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={s.scroll}
+        contentContainerStyle={s.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            tintColor="#c8f323"
+            refreshing={isRefreshing}
+            onRefresh={() => {
+              void loadPortfolio(true);
+            }}
+          />
+        }
+      >
         <View style={s.topBar}>
           <Pressable style={s.iconButton}>
             <Text style={s.icon}>☰</Text>
@@ -58,9 +165,9 @@ export function AssetsScreen({ navigation }: Props) {
 
         <View style={s.balanceHero}>
           <Text style={s.balanceLabel}>Total Balance</Text>
-          <Text style={s.balanceAmount}>$8,489.28</Text>
+          <Text style={s.balanceAmount}>{totalBalanceLabel}</Text>
           <View style={s.deltaPill}>
-            <Text style={s.deltaText}>+28.43% ($1,872.10)</Text>
+            <Text style={s.deltaText}>{updatedAtLabel}</Text>
           </View>
         </View>
 
@@ -78,26 +185,51 @@ export function AssetsScreen({ navigation }: Props) {
 
         <View style={s.listHeader}>
           <Text style={s.listTitle}>My Assets</Text>
-          <Pressable>
-            <Text style={s.seeAll}>See all</Text>
-          </Pressable>
+          <Text style={s.seeAll}>{assets.length}</Text>
         </View>
 
-        <View style={s.listWrap}>
-          {assets.map((asset) => (
-            <Pressable key={asset.symbol} style={s.assetCard}>
-              <View>
-                <Text style={s.assetName}>{asset.name}</Text>
-                <Text style={s.assetBalance}>{asset.balance}</Text>
-              </View>
-              <View style={s.assetRight}>
-                <Text style={s.assetUsd}>{asset.usd}</Text>
-                <Text style={[s.assetDelta, asset.delta.startsWith('-') ? s.down : s.up]}>
-                  {asset.delta}
-                </Text>
-              </View>
+        {error ? (
+          <View style={s.errorCard}>
+            <Text style={s.errorTitle}>Portfolio unavailable</Text>
+            <Text style={s.errorBody}>{error}</Text>
+            <Pressable
+              style={s.retryButton}
+              onPress={() => {
+                void loadPortfolio();
+              }}
+            >
+              <Text style={s.retryButtonText}>Retry</Text>
             </Pressable>
-          ))}
+          </View>
+        ) : null}
+
+        <View style={s.listWrap}>
+          {assets.length === 0 ? (
+            <View style={s.emptyAssetCard}>
+              <Text style={s.emptyAssetTitle}>No assets yet</Text>
+              <Text style={s.emptyAssetHint}>
+                Fund this wallet on Sepolia to see your live token balances.
+              </Text>
+            </View>
+          ) : (
+            assets.map((asset) => (
+              <Pressable key={asset.symbol} style={s.assetCard}>
+                <View style={s.assetLeft}>
+                  <TokenIcon asset={asset} />
+                  <View>
+                    <Text style={s.assetName}>{asset.name}</Text>
+                    <Text style={s.assetBalance}>
+                      {formatTokenAmount(asset.amount, asset.priceUsd)} {asset.symbol}
+                    </Text>
+                  </View>
+                </View>
+                <View style={s.assetRight}>
+                  <Text style={s.assetUsd}>{formatUsd(asset.valueUsd)}</Text>
+                  <Text style={s.assetPrice}>@ {formatUsd(asset.priceUsd)}</Text>
+                </View>
+              </Pressable>
+            ))
+          )}
         </View>
       </ScrollView>
 
@@ -107,11 +239,23 @@ export function AssetsScreen({ navigation }: Props) {
         </View>
         <Text style={s.bottomItem}>Market</Text>
         <Text style={s.bottomItem}>Alerts</Text>
-        <Pressable onPress={() => clearWallet()}>
+        <Pressable onPress={() => void clearWallet()}>
           <Text style={s.bottomItem}>Unpair</Text>
         </Pressable>
       </View>
     </SafeAreaView>
+  );
+}
+
+function TokenIcon({ asset }: { asset: PortfolioAsset }) {
+  if (asset.imageUrl) {
+    return <Image source={{ uri: asset.imageUrl }} style={s.assetImage} resizeMode="cover" />;
+  }
+
+  return (
+    <View style={s.assetFallback}>
+      <Text style={s.assetFallbackText}>{asset.symbol.slice(0, 3)}</Text>
+    </View>
   );
 }
 
@@ -126,6 +270,16 @@ const s = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingBottom: 120,
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  loadingText: {
+    color: '#d0d0d0',
+    fontSize: 14,
   },
   topBar: {
     marginTop: 8,
@@ -247,6 +401,38 @@ const s = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+  errorCard: {
+    marginTop: 14,
+    backgroundColor: '#2a1717',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#5a2a2a',
+    padding: 14,
+    gap: 8,
+  },
+  errorTitle: {
+    color: '#ffb4ab',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  errorBody: {
+    color: '#ffd8d3',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  retryButton: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    backgroundColor: '#ffb4ab',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    marginTop: 2,
+  },
+  retryButtonText: {
+    color: '#3a1511',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   listWrap: {
     marginTop: 12,
     gap: 10,
@@ -261,6 +447,31 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(19,19,19,0.8)',
     paddingHorizontal: 14,
     paddingVertical: 16,
+  },
+  assetLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flexShrink: 1,
+  },
+  assetImage: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#202020',
+  },
+  assetFallback: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#252525',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assetFallbackText: {
+    color: '#d8d8d8',
+    fontSize: 10,
+    fontWeight: '700',
   },
   assetName: {
     color: '#f3f3f3',
@@ -280,16 +491,29 @@ const s = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-  assetDelta: {
+  assetPrice: {
     marginTop: 3,
     fontSize: 12,
     fontWeight: '600',
-  },
-  up: {
     color: '#c8f323',
   },
-  down: {
-    color: '#ffb4ab',
+  emptyAssetCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    backgroundColor: '#171717',
+    padding: 16,
+    gap: 8,
+  },
+  emptyAssetTitle: {
+    color: '#f2f2f2',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  emptyAssetHint: {
+    color: '#a5a5a5',
+    fontSize: 13,
+    lineHeight: 19,
   },
   bottomNav: {
     position: 'absolute',

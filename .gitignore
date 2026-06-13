@@ -24,3 +24,6 @@ pi/.lgd-nfy0
 
 # Local mobile test defaults (never commit)
 mobile/src/config/sendDefaults.local.ts
+
+.agents/
+skills-lock.json
