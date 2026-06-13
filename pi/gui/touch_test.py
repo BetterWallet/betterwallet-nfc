@@ -7,7 +7,6 @@ os.environ.setdefault("SDL_VIDEO_KMSDRM_DEVICE_INDEX", "1")
 os.environ.setdefault("SDL_MOUSE_RELATIVE", "0")
 
 import pygame
-import gt911
 
 WIDTH, HEIGHT = 320, 480
 BG     = (15, 15, 15)
@@ -27,7 +26,6 @@ BUTTONS = [
 
 def main():
     pygame.init()
-    gt911.start()
     screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN | pygame.NOFRAME)
     pygame.mouse.set_visible(False)
     font_lg = pygame.font.SysFont("dejavusans", 22, bold=True)

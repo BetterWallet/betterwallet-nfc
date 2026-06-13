@@ -8,7 +8,6 @@ os.environ.setdefault("SDL_VIDEODRIVER", "kmsdrm")
 os.environ.setdefault("SDL_VIDEO_KMSDRM_DEVICE_INDEX", "1")  # card1 = SPI LCD
 
 import pygame
-import gt911
 
 WIDTH, HEIGHT = 320, 480
 FPS = 30
@@ -27,7 +26,6 @@ STATES = ["idle", "tap1", "signing", "tap2", "done"]
 
 def init_display():
     pygame.init()
-    gt911.start()
     flags = pygame.FULLSCREEN | pygame.NOFRAME
     try:
         screen = pygame.display.set_mode((WIDTH, HEIGHT), flags)
