@@ -9,7 +9,7 @@ from pairing_wallet import SEPOLIA_CHAIN_ID, load_or_create_keypair
 from setup import setup
 
 try:
-    from clearsig import Registry, translate_with_registry, update_registry
+    from clearsig import Registry, translate_with_registry
     from clearsig._calldata_digest import calldata_digest_hex
     from clearsig._validate import sanitize_for_terminal
 except ImportError as exc:
@@ -46,9 +46,11 @@ def ensure_registry() -> Registry:
     try:
         _registry = Registry.load()
     except ValueError:
-        log("ERC-7730 registry not found — downloading...")
-        update_registry()
-        _registry = Registry.load()
+        # Keep signing path offline at runtime; pre-download registry during setup.
+        raise RuntimeError(
+            "ERC-7730 registry not found locally. Offline mode enabled; "
+            "run setup to pre-download registry."
+        )
     return _registry
 
 
@@ -101,7 +103,6 @@ def display_clear_signing_review(unsigned_tx: dict, keypair: dict[str, str]) -> 
     log(f"Max fee per gas: {max_fee} wei ({max_fee / 1e9:.9f} gwei)")
     log(f"Max priority fee per gas: {max_priority_fee} wei ({max_priority_fee / 1e9:.9f} gwei)")
     log(f"Unsigned tx JSON: {json.dumps(unsigned_tx, sort_keys=True)}")
-    log(f"Raw calldata: {calldata_hex}")
 
     digest = calldata_digest_hex(calldata_hex)
     log(f"ERC-8213 calldata digest: {digest}")

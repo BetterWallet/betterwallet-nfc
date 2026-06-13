@@ -17,13 +17,12 @@ from setup import nfc, setup
 from wallet_keys import SEPOLIA_CHAIN_ID, SOLANA_CLUSTER, EvmKeypair, SolanaKeypair
 
 try:
-    from clearsig import Registry, translate_with_registry, update_registry
+    from clearsig import Registry, translate_with_registry
     from clearsig._calldata_digest import calldata_digest_hex
     from clearsig._validate import sanitize_for_terminal
 except ImportError:
     Registry = None  # type: ignore[assignment]
     translate_with_registry = None  # type: ignore[assignment]
-    update_registry = None  # type: ignore[assignment]
     calldata_digest_hex = None  # type: ignore[assignment]
     sanitize_for_terminal = None  # type: ignore[assignment]
 
@@ -101,13 +100,9 @@ def ensure_registry():
     try:
         _registry = Registry.load()
     except Exception:
-        if update_registry is not None:
-            try:
-                log("ERC-7730 registry not found — downloading...")
-                update_registry()
-                _registry = Registry.load()
-            except Exception:
-                _registry = None
+        # Runtime must stay offline. Registry should be pre-downloaded during setup.
+        log("ERC-7730 registry not found locally. Offline mode: skipping network download.")
+        _registry = None
     return _registry
 
 
@@ -122,7 +117,11 @@ def translation_title_and_lines(translated: Any) -> tuple[str, list[str]]:
 
     intent = sanitize_for_terminal(str(getattr(translated, "intent", "Contract call")))
     entity = sanitize_for_terminal(str(getattr(translated, "entity", "")))
+    function_signature = sanitize_for_terminal(str(getattr(translated, "function_signature", "")))
     lines: list[str] = []
+    lines.append(f"Intent: {intent}")
+    if function_signature:
+        lines.append(f"Function: {function_signature}")
     if entity:
         lines.append(f"dApp: {entity}")
 
@@ -318,7 +317,6 @@ class NfcWalletService:
         log(f"Max fee per gas: {max_fee} wei ({max_fee / 1e9:.9f} gwei)")
         log(f"Max priority fee per gas: {max_priority_fee} wei ({max_priority_fee / 1e9:.9f} gwei)")
         log(f"Unsigned tx JSON: {json.dumps(unsigned_tx, sort_keys=True)}")
-        log(f"Raw calldata: {calldata_hex}")
 
         digest: str
         if calldata_digest_hex is not None:
@@ -378,9 +376,9 @@ class NfcWalletService:
                         )
                     title, translated_lines = translation_title_and_lines(translated)
                     lines = [
-                        *common_lines,
-                        f"Contract: {unsigned_tx['to']}",
                         *translated_lines,
+                        f"Contract: {unsigned_tx['to']}",
+                        *common_lines,
                         f"Max Fees: {max_fees_label}",
                     ]
                     return SignReview(
@@ -407,29 +405,15 @@ class NfcWalletService:
             )
 
         lines = [
-            *common_lines,
             "Warning: Unable to decode contract call",
-            f"Contract: {unsigned_tx['to']}",
-            f"Value: {format_eth_from_wei(value_wei)} ETH ({value_wei} wei)",
-            f"Max Fees: {max_fees_label}",
-            f"Calldata Digest: {digest}",
+            f"ERC-8213 Digest: {digest}",
         ]
-        raw_preview = json.dumps(
-            {
-                "unsignedTx": unsigned_tx,
-                "calldata": calldata_hex,
-                "nonce": nonce,
-                "maxPriorityFeePerGasWei": max_priority_fee,
-            },
-            indent=2,
-            sort_keys=True,
-        )
         return SignReview(
             request=request,
             chain="evm",
-            title="Blind signing warning",
+            title="Review unknown transaction",
             lines=lines,
-            raw_preview=raw_preview,
+            raw_preview="",
         )
 
     def _build_solana_review(self, request: dict[str, Any], keypair: SolanaKeypair) -> SignReview:

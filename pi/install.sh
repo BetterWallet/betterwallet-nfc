@@ -34,6 +34,9 @@ fi
 "$VENV/bin/pip" install --upgrade pip
 "$VENV/bin/pip" install --ignore-requires-python -r "$SCRIPT_DIR/requirements.txt"
 
+# Pre-download ERC-7730 registry for offline runtime clear-signing.
+"$VENV/bin/python" -c "from clearsig import update_registry; update_registry(); print('ERC-7730 registry downloaded')"
+
 # Apply pn532pi I2C patch (fixes errno 121 / EREMOTEIO on Linux 5.3+, removes
 # invalid wakeup write, and handles early-response frames on Pi 5)
 PATCH_DST="$VENV/lib/python3.*/site-packages/pn532pi/interfaces/pn532i2c.py"
