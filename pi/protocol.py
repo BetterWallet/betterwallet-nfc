@@ -7,11 +7,29 @@ STATUS_OK = bytes([0x90, 0x00])
 MAX_PAYLOAD_BYTES = 64 * 1024
 
 
+class CardMovedAwayError(IOError):
+    """Transient NFC exchange error when the phone/card leaves field."""
+
+
+def is_card_moved_away_error(error: object) -> bool:
+    text = str(error).lower()
+    return (
+        "card moved away" in text
+        or "indataexchangefailed" in text
+        or "indataexchange failed" in text
+    )
+
+
 def _exchange(apdu: bytearray) -> bytearray:
     """Send APDU and return response bytes."""
-    success, response = nfc.inDataExchange(apdu)
+    try:
+        success, response = nfc.inDataExchange(apdu)
+    except Exception as exc:  # noqa: BLE001 - normalize library-specific transport errors
+        if is_card_moved_away_error(exc):
+            raise CardMovedAwayError("inDataExchange failed — card moved away?") from exc
+        raise
     if not success:
-        raise IOError("inDataExchange failed — card moved away?")
+        raise CardMovedAwayError("inDataExchange failed — card moved away?")
     return bytearray(response)
 
 

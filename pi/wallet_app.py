@@ -47,6 +47,7 @@ from nfc_wallet_service import (  # noqa: E402
     STATUS_STOPPED,
     STATUS_TIMEOUT,
     SignReview,
+    is_retryable_nfc_error_message,
 )
 from pin_store import enroll_pin, pin_exists, verify_pin  # noqa: E402
 from wallet_keys import EvmKeypair, SolanaKeypair, load_or_create_all_keypairs  # noqa: E402
@@ -281,7 +282,7 @@ class WalletGuiApp:
 
         def target() -> None:
             ok, message = self.nfc_service.send_json_response(response, stop_event=self.worker_stop_event)
-            self.worker_queue.put(("send_done", (ok, message, label)))
+            self.worker_queue.put(("send_done", (ok, message, label, response)))
 
         self.worker_thread = threading.Thread(target=target, daemon=True)
         self.worker_thread.start()
@@ -343,6 +344,13 @@ class WalletGuiApp:
             if event_name == "listen_status":
                 status, detail = payload
                 if status == STATUS_TIMEOUT:
+                    detail_message = ""
+                    if isinstance(detail, dict):
+                        detail_message = str(detail.get("message", ""))
+                    if detail_message and is_retryable_nfc_error_message(detail_message):
+                        self.log_lines.append("Card moved away; retrying NFC listen")
+                        self.start_listen_worker(mode=self.listen_mode)
+                        continue
                     if self.listen_mode == "passive":
                         self.log_lines.append("Passive listen timed out; retrying")
                         self.start_listen_worker(mode="passive")
@@ -370,6 +378,11 @@ class WalletGuiApp:
                     self.status_message = f"Pairing complete ({chain})."
                     self.log_lines.append(f"Paired {chain}")
                 else:
+                    if is_retryable_nfc_error_message(message):
+                        self.log_lines.append("Pair response interrupted; waiting for retap")
+                        self.start_send_worker(response, "Pairing response")
+                        self.set_screen(SCREEN_SEND_WAIT)
+                        continue
                     self.status_message = f"Pairing failed: {message}"
                 self.set_screen(SCREEN_STATUS)
 
@@ -382,11 +395,16 @@ class WalletGuiApp:
                 self.set_screen(SCREEN_CLEAR_SIGN)
 
             elif event_name == "send_done":
-                ok, message, label = payload
+                ok, message, label, response = payload
                 if ok:
                     self.status_message = f"{label} complete."
                     self.log_lines.append(f"{label} sent")
                 else:
+                    if is_retryable_nfc_error_message(message):
+                        self.log_lines.append("Card moved away during send; waiting for retap")
+                        self.start_send_worker(response, label)
+                        self.set_screen(SCREEN_SEND_WAIT)
+                        continue
                     self.status_message = f"{label} failed: {message}"
                 self.pending_sign_request = None
                 self.pending_review = None

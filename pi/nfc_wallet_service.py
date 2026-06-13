@@ -12,7 +12,7 @@ from typing import Any
 from eth_account import Account
 from nacl.signing import SigningKey
 
-from protocol import read_payload, select_aid, write_payload
+from protocol import is_card_moved_away_error, read_payload, select_aid, write_payload
 from setup import nfc, setup
 from wallet_keys import SEPOLIA_CHAIN_ID, SOLANA_CLUSTER, EvmKeypair, SolanaKeypair
 
@@ -31,6 +31,10 @@ STATUS_STOPPED = "stopped"
 STATUS_READY = "ready"
 STATUS_ERROR = "error"
 _registry = None
+
+
+def is_retryable_nfc_error_message(message: str) -> bool:
+    return is_card_moved_away_error(message)
 
 
 @dataclass
@@ -170,6 +174,8 @@ class NfcWalletService:
                 raise ValueError("Request payload must be a JSON object")
             return STATUS_READY, request
         except Exception as exc:  # noqa: BLE001 - UI caller displays error message
+            if is_card_moved_away_error(exc):
+                return STATUS_TIMEOUT, {"message": "Card moved away. Please tap again."}
             return STATUS_ERROR, {"message": f"Unable to parse NFC payload: {exc}"}
 
     def send_json_response(
@@ -191,6 +197,8 @@ class NfcWalletService:
             write_payload(json.dumps(payload).encode("utf-8"))
             return True, "Response sent."
         except Exception as exc:  # noqa: BLE001
+            if is_card_moved_away_error(exc):
+                return False, "Card moved away during transfer. Please tap again."
             return False, f"Unable to send NFC response: {exc}"
 
     def is_pair_request(self, request: dict[str, Any]) -> bool:

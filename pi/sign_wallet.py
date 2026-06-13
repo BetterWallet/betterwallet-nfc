@@ -5,7 +5,7 @@ import time
 from eth_account import Account
 
 from pairing_wallet import SEPOLIA_CHAIN_ID, load_or_create_keypair
-from protocol import read_payload, select_aid, write_payload
+from protocol import is_card_moved_away_error, read_payload, select_aid, write_payload
 from setup import nfc, setup
 
 
@@ -36,6 +36,9 @@ def read_phone_payload() -> dict | None:
         log(f"Payload JSON: {json.dumps(message, sort_keys=True)}")
         return message
     except Exception as exc:  # noqa: BLE001 - script logging is intentionally broad
+        if is_card_moved_away_error(exc):
+            log("Card moved away during read; waiting for next tap.")
+            return None
         log(f"Failed to parse phone payload: {exc}")
         return None
 
@@ -128,7 +131,7 @@ def sign_request_payload(sign_request: dict, keypair: dict[str, str]) -> str:
     log(f"Max fee per gas (wei): {tx_dict['maxFeePerGas']}")
     log(f"Max priority fee per gas (wei): {tx_dict['maxPriorityFeePerGas']}")
     log(f"Nonce used: {nonce}")
-    log(f"Signed raw tx: {signed_raw_tx}")
+    # log(f"Signed raw tx: {signed_raw_tx}")
 
     return signed_raw_tx
 
@@ -160,6 +163,9 @@ def send_response(payload: dict) -> bool:
         log("Response sent successfully")
         return True
     except Exception as exc:  # noqa: BLE001
+        if is_card_moved_away_error(exc):
+            log("Card moved away during send; waiting for re-tap.")
+            return False
         log(f"Failed to send response: {exc}")
         return False
 
@@ -172,7 +178,7 @@ def main() -> None:
     while True:
         request = read_phone_payload()
         if request is None:
-            time.sleep(0.5)
+            time.sleep(0.1)
             continue
 
         try:
@@ -180,13 +186,13 @@ def main() -> None:
         except Exception as exc:  # noqa: BLE001
             log(f"Signing failed: {exc}")
             log("Waiting for next sign request...\n")
-            time.sleep(0.5)
+            time.sleep(0.1)
             continue
 
         sent = False
         while not sent:
             sent = send_response(response)
-            time.sleep(0.5)
+            time.sleep(0.1)
 
         log("Done. Waiting for next sign request...\n")
 
