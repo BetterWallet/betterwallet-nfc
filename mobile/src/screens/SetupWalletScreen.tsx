@@ -1,12 +1,8 @@
 import React, { useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { NfcTransferOverlay } from '../components/NfcTransferOverlay';
+import { describeNfcError } from '../services/nfcError';
 import { buildPairRequest, parsePairResponse } from '../services/pairing';
 import { useWallet } from '../state/wallet';
 import { useHCE } from '../useHCE';
@@ -26,7 +22,14 @@ const NETWORKS: NetworkOption[] = [
 
 export function SetupWalletScreen() {
   const { saveWallet } = useWallet();
-  const { loadPayload, waitForSignedTxOnce, clearSignedTxListener } = useHCE();
+  const {
+    loadPayload,
+    waitForSignedTxOnce,
+    clearSignedTxListener,
+    resetTransferState,
+    transferPhase,
+    transferProgress,
+  } = useHCE();
   const [phase, setPhase] = useState<PairPhase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [selectedNetwork, setSelectedNetwork] = useState<NetworkOption>(NETWORKS[0]);
@@ -48,19 +51,26 @@ export function SetupWalletScreen() {
   }, [phase]);
 
   const isActive = phase !== 'idle';
+  const nfcError = useMemo(() => {
+    if (!error) {
+      return null;
+    }
+    return describeNfcError(error, transferPhase);
+  }, [error, transferPhase]);
 
   const runPairing = async () => {
     if (isRunningRef.current) return;
     isRunningRef.current = true;
     setError(null);
     clearSignedTxListener();
+    resetTransferState();
 
     try {
       const request = buildPairRequest();
       setPhase('pairing');
+      const responsePromise = waitForSignedTxOnce(45000);
       loadPayload(request);
-
-      const responseJson = await waitForSignedTxOnce(45000);
+      const responseJson = await responsePromise;
       const profile = parsePairResponse(responseJson);
 
       setPhase('saving');
@@ -149,22 +159,21 @@ export function SetupWalletScreen() {
           </View>
         )}
 
-        {isActive && (
-          <View style={s.phaseCard}>
-            <Text style={s.phase}>{phaseLabel}</Text>
-            <Text style={s.phaseHint}>{phaseHint}</Text>
-            <ActivityIndicator color="#c8f323" size="large" style={s.spinner} />
-          </View>
-        )}
-
-        {error ? (
-          <View style={s.errorCard}>
-            <Text style={s.errorTitle}>NFC error</Text>
-            <Text style={s.errorBody}>{error}</Text>
-            <Text style={s.errorRetryHint}>
-              Hold your wallet near your phone and tap Retry to try again.
-            </Text>
-          </View>
+        {isActive || error ? (
+          phase === 'saving' && !error ? (
+            <View style={s.phaseCard}>
+              <Text style={s.phase}>{phaseLabel}</Text>
+              <Text style={s.phaseHint}>{phaseHint}</Text>
+            </View>
+          ) : (
+            <NfcTransferOverlay
+              phase={transferPhase}
+              progress={transferProgress}
+              error={error ? `${nfcError?.title ?? 'NFC error'}\n${nfcError?.guidance ?? error}` : null}
+              onRetry={runPairing}
+              retryLabel={nfcError?.actionLabel ?? 'Retry'}
+            />
+          )
         ) : null}
 
         <View style={s.footer}>
@@ -363,35 +372,6 @@ const s = StyleSheet.create({
     color: '#d4d4d4',
     fontSize: 15,
     lineHeight: 22,
-  },
-  spinner: {
-    marginTop: 18,
-  },
-
-  // Error
-  errorCard: {
-    marginTop: 20,
-    backgroundColor: '#2a1717',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#5a2a2a',
-    padding: 14,
-    gap: 8,
-  },
-  errorTitle: {
-    color: '#ffb4ab',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  errorBody: {
-    color: '#ffd8d3',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  errorRetryHint: {
-    color: '#d4a8a4',
-    fontSize: 13,
-    lineHeight: 19,
   },
 
   // Footer

@@ -2,7 +2,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { JsonRpcProvider, formatUnits, parseUnits } from 'ethers';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -13,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { NfcTransferOverlay } from '../components/NfcTransferOverlay';
 import { TokenSelectModal } from '../components/TokenSelectModal';
 import { SEPOLIA_SWAP_TOKENS, type SwapTokenOption } from '../config/swapTokens';
 import type { RootStackParamList } from '../navigation/RootNavigator';
@@ -35,6 +35,7 @@ import {
   type QuoteResponse,
   type SwapTx,
 } from '../services/uniswap';
+import { describeNfcError, isLikelyNfcError } from '../services/nfcError';
 import { useSendFlow } from '../state/sendFlow';
 import { useWallet } from '../state/wallet';
 import { useHCE } from '../useHCE';
@@ -49,7 +50,14 @@ const UNISWAP_LOGO = require('../assets/uniswap-logo.png');
 
 export function SwapScreen({ navigation }: Props) {
   const { wallet } = useWallet();
-  const { loadPayload, waitForSignedPayloadOnce, clearSignedTxListener } = useHCE();
+  const {
+    loadPayload,
+    waitForSignedPayloadOnce,
+    clearSignedTxListener,
+    resetTransferState,
+    transferPhase,
+    transferProgress,
+  } = useHCE();
   const { setReview, setResult, setStage, setError: setFlowError } = useSendFlow();
   const [amount, setAmount] = useState('');
   const [tokenIn, setTokenIn] = useState<SwapTokenOption>(SEPOLIA_SWAP_TOKENS[0]);
@@ -73,6 +81,7 @@ export function SwapScreen({ navigation }: Props) {
   const [isLoadingQuote, setIsLoadingQuote] = useState(false);
   const [isSigning, setIsSigning] = useState(false);
   const [signingHint, setSigningHint] = useState<string | null>(null);
+  const [signingStep, setSigningStep] = useState<string | null>(null);
   const [error, setLocalError] = useState<string | null>(null);
   const [tokenPickerSide, setTokenPickerSide] = useState<'sell' | 'buy' | null>(null);
   const quoteRequestRef = useRef(0);
@@ -87,6 +96,13 @@ export function SwapScreen({ navigation }: Props) {
     );
   }, [amount, tokenIn.address, tokenOut.address]);
   const canExecuteSwap = hasQuote && !isLoadingQuote && !isSigning;
+  const nfcError = useMemo(() => {
+    if (!error) {
+      return null;
+    }
+    return describeNfcError(error, transferPhase);
+  }, [error, transferPhase]);
+  const shouldShowNfcError = useMemo(() => (error ? isLikelyNfcError(error) : false), [error]);
   const sellAmountNumber = Number(amount || '0');
   const buyAmountNumber = Number(expectedOutputAmount || '0');
   const getTokenPrice = (token: SwapTokenOption): number => {
@@ -291,11 +307,12 @@ export function SwapScreen({ navigation }: Props) {
       },
     });
     const signRequest = buildSignRequest(review, wallet.address, nonce);
-    loadPayload(signRequest);
-    const signedPayload = await waitForSignedPayloadOnce(
+    const signedPayloadPromise = waitForSignedPayloadOnce(
       45000,
       'Timed out waiting for signed transaction over NFC.',
     );
+    loadPayload(signRequest);
+    const signedPayload = await signedPayloadPromise;
     const signed = parseSignedTxMessage(signedPayload);
     if (signed.id !== signRequest.id) {
       throw new Error('Signed transaction response ID mismatch.');
@@ -308,11 +325,12 @@ export function SwapScreen({ navigation }: Props) {
     requestId: string,
   ): Promise<string> => {
     const typedDataRequest = buildTypedDataSignRequest(requestId, permitData);
-    loadPayload(typedDataRequest);
-    const signedPayload = await waitForSignedPayloadOnce(
+    const signedPayloadPromise = waitForSignedPayloadOnce(
       45000,
       'Timed out waiting for typed-data signature over NFC.',
     );
+    loadPayload(typedDataRequest);
+    const signedPayload = await signedPayloadPromise;
     const signatureResponse = parseTypedDataSignatureMessage(signedPayload);
     if (signatureResponse.id !== requestId) {
       throw new Error('Typed-data signature response ID mismatch.');
@@ -338,7 +356,10 @@ export function SwapScreen({ navigation }: Props) {
     setLocalError(null);
     setIsSigning(true);
     setSigningHint('Preparing NFC signing...');
+    setSigningStep('Preparing');
     clearSignedTxListener();
+    resetTransferState();
+    setStage('nfc');
 
     try {
       const provider = new JsonRpcProvider(RPC_URL);
@@ -346,6 +367,7 @@ export function SwapScreen({ navigation }: Props) {
 
       if (approvalTx) {
         setSigningHint('Sign approval transaction with Better Wallet.');
+        setSigningStep('Approval step');
         await signAndBroadcastTx(
           approvalTx,
           nonce,
@@ -358,6 +380,7 @@ export function SwapScreen({ navigation }: Props) {
       let permitSignature: string | undefined;
       if (activeQuote.permitData && typeof activeQuote.permitData === 'object') {
         setSigningHint('Sign Permit2 typed data with Better Wallet.');
+        setSigningStep('Permit step');
         permitSignature = await signPermitTypedData(
           activeQuote.permitData,
           `permit-${Date.now()}`,
@@ -368,6 +391,7 @@ export function SwapScreen({ navigation }: Props) {
       const swapTx = await fetchSwapTransaction(activeQuote, permitSignature);
 
       setSigningHint('Sign swap transaction with Better Wallet.');
+      setSigningStep('Swap step');
       const swapResult = await signAndBroadcastTx(
         swapTx,
         nonce,
@@ -406,10 +430,12 @@ export function SwapScreen({ navigation }: Props) {
       const message = err instanceof Error ? err.message : 'Swap signing failed.';
       setLocalError(message);
       setFlowError(message);
+      setStage('error');
     } finally {
       clearSignedTxListener();
       setIsSigning(false);
       setSigningHint(null);
+      setSigningStep(null);
     }
   };
 
@@ -499,12 +525,29 @@ export function SwapScreen({ navigation }: Props) {
         </Text>
 
         {error ? <Text style={s.error}>{error}</Text> : null}
-        {isSigning && signingHint ? (
-          <View style={s.signingState}>
-            <ActivityIndicator color="#c8f323" size="small" />
-            <Text style={s.signingHint}>{signingHint}</Text>
-          </View>
-        ) : null}
+        {(isSigning || (shouldShowNfcError && hasQuote)) && (
+          <NfcTransferOverlay
+            phase={transferPhase}
+            progress={transferProgress}
+            error={error ? `${nfcError?.title ?? 'NFC error'}\n${nfcError?.guidance ?? error}` : null}
+            onRetry={!isSigning ? onSignAndSwap : undefined}
+            retryLabel={nfcError?.actionLabel ?? 'Retry'}
+            onClose={
+              !isSigning
+                ? () => {
+                    setLocalError(null);
+                    setFlowError(null);
+                  }
+                : undefined
+            }
+            closeLabel="Dismiss"
+            contextLabel={
+              signingHint
+                ? `${signingStep ? `${signingStep} - ` : ''}${signingHint}`
+                : (signingStep ?? undefined)
+            }
+          />
+        )}
 
         <View style={s.footer}>
           <Pressable
@@ -782,16 +825,6 @@ const s = StyleSheet.create({
     marginTop: 12,
     color: '#ff9188',
     fontSize: 14,
-  },
-  signingState: {
-    marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  signingHint: {
-    color: '#d8d8d8',
-    fontSize: 13,
   },
   footer: {
     marginTop: 'auto',

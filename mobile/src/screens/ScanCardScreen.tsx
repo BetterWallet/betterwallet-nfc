@@ -3,9 +3,11 @@ import { JsonRpcProvider } from 'ethers';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { NfcTransferOverlay } from '../components/NfcTransferOverlay';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { parseSignedTxMessage, broadcastSignedResult } from '../services/broadcast';
 import { buildSignRequest } from '../services/ethTransaction';
+import { describeNfcError } from '../services/nfcError';
 import { useSendFlow } from '../state/sendFlow';
 import { useWallet } from '../state/wallet';
 import { useHCE } from '../useHCE';
@@ -17,7 +19,14 @@ const DEFAULT_RPC_URL = 'https://ethereum-sepolia-rpc.publicnode.com';
 export function ScanCardScreen({ navigation }: Props) {
   const { state, setStage, setSignedTx, setResult, setError } = useSendFlow();
   const { wallet } = useWallet();
-  const { loadPayload, waitForSignedTxOnce, clearSignedTxListener } = useHCE();
+  const {
+    loadPayload,
+    waitForSignedTxOnce,
+    clearSignedTxListener,
+    resetTransferState,
+    transferPhase,
+    transferProgress,
+  } = useHCE();
 
   const [localError, setLocalError] = useState<string | null>(null);
   const [runNonce, setRunNonce] = useState(0);
@@ -35,13 +44,20 @@ export function ScanCardScreen({ navigation }: Props) {
 
   const phaseHint = useMemo(() => {
     if (state.stage === 'nfc') {
-      return 'Keep your Better Wallet near your phone until signing finishes.';
+      return 'NFC transfer in progress.';
     }
     if (state.stage === 'broadcasting') {
       return 'Submitting transaction to the network.';
     }
     return 'Getting ready to sign over NFC.';
   }, [state.stage]);
+
+  const nfcError = useMemo(() => {
+    if (!localError) {
+      return null;
+    }
+    return describeNfcError(localError, transferPhase);
+  }, [localError, transferPhase]);
 
   useEffect(() => {
     if (startedRef.current || !state.review) {
@@ -118,6 +134,7 @@ export function ScanCardScreen({ navigation }: Props) {
 
   const onRetry = () => {
     startedRef.current = false;
+    resetTransferState();
     setLocalError(null);
     setError(null);
     setStage('nfc');
@@ -126,6 +143,7 @@ export function ScanCardScreen({ navigation }: Props) {
 
   const onCancel = () => {
     clearSignedTxListener();
+    resetTransferState();
     setStage('review');
     navigation.replace('Review');
   };
@@ -151,13 +169,25 @@ export function ScanCardScreen({ navigation }: Props) {
           Hold your Better Wallet near the back of your phone to sign this transaction.
         </Text>
 
-        <View style={s.phaseCard}>
-          <Text style={s.phase}>{phaseLabel}</Text>
-          <Text style={s.phaseHint}>{phaseHint}</Text>
-          <ActivityIndicator color="#c8f323" size="large" style={s.spinner} />
-        </View>
+        {state.stage === 'broadcasting' ? (
+          <View style={s.phaseCard}>
+            <Text style={s.phase}>{phaseLabel}</Text>
+            <Text style={s.phaseHint}>{phaseHint}</Text>
+            <ActivityIndicator color="#c8f323" size="large" style={s.spinner} />
+          </View>
+        ) : (
+          <NfcTransferOverlay
+            phase={transferPhase}
+            progress={transferProgress}
+            error={localError ? `${nfcError?.title ?? 'NFC error'}\n${nfcError?.guidance ?? localError}` : null}
+            onRetry={onRetry}
+            retryLabel={nfcError?.actionLabel ?? 'Retry'}
+            onClose={onCancel}
+            closeLabel="Cancel"
+          />
+        )}
 
-        {localError ? (
+        {localError && state.stage === 'broadcasting' ? (
           <View style={s.errorCard}>
             <Text style={s.errorTitle}>NFC error</Text>
             <Text style={s.errorBody}>{localError}</Text>
@@ -168,7 +198,7 @@ export function ScanCardScreen({ navigation }: Props) {
         ) : null}
 
         <View style={s.footer}>
-          {localError ? (
+          {localError && state.stage === 'broadcasting' ? (
             <Pressable style={s.primaryButton} onPress={onRetry}>
               <Text style={s.primaryButtonText}>Retry</Text>
             </Pressable>

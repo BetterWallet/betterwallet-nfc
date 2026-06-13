@@ -212,6 +212,9 @@ class WalletGuiApp:
         self.selected_chain = "evm"
         self.status_message = ""
         self.error_message = ""
+        self.send_wait_error = ""
+        self.pending_send_response: dict[str, Any] | None = None
+        self.pending_send_label: str | None = None
         self.log_lines: list[str] = ["Wallet started", "Keys loaded"]
 
         self.pin_input = ""
@@ -279,6 +282,9 @@ class WalletGuiApp:
     def start_send_worker(self, response: dict[str, Any], label: str) -> None:
         self.stop_worker()
         self.worker_stop_event = threading.Event()
+        self.pending_send_response = response
+        self.pending_send_label = label
+        self.send_wait_error = ""
 
         def target() -> None:
             ok, message = self.nfc_service.send_json_response(response, stop_event=self.worker_stop_event)
@@ -399,17 +405,26 @@ class WalletGuiApp:
                 if ok:
                     self.status_message = f"{label} complete."
                     self.log_lines.append(f"{label} sent")
+                    self.pending_send_response = None
+                    self.pending_send_label = None
+                    self.send_wait_error = ""
+                    self.pending_sign_request = None
+                    self.pending_review = None
+                    self.pin_input = ""
+                    self.set_screen(SCREEN_STATUS)
                 else:
                     if is_retryable_nfc_error_message(message):
                         self.log_lines.append("Card moved away during send; waiting for retap")
                         self.start_send_worker(response, label)
                         self.set_screen(SCREEN_SEND_WAIT)
                         continue
-                    self.status_message = f"{label} failed: {message}"
-                self.pending_sign_request = None
-                self.pending_review = None
-                self.pin_input = ""
-                self.set_screen(SCREEN_STATUS)
+                    self.send_wait_error = f"{label} failed: {message}"
+                    self.status_message = self.send_wait_error
+                    self.log_lines.append(self.send_wait_error)
+                    self.pending_sign_request = None
+                    self.pending_review = None
+                    self.pin_input = ""
+                    self.set_screen(SCREEN_STATUS)
 
     def handle_home_press(self, pos: tuple[int, int]) -> None:
         evm_rect = pygame.Rect(20, 112, 135, 170)
@@ -455,7 +470,32 @@ class WalletGuiApp:
             self.clear_sign_scroll = min(max_scroll, self.clear_sign_scroll + 1)
 
     def handle_send_wait_press(self, pos: tuple[int, int]) -> None:
+        if self.send_wait_error:
+            cancel_btn, retry_btn = self.send_wait_button_rects()
+            if retry_btn.collidepoint(pos):
+                if self.pending_send_response and self.pending_send_label:
+                    self.send_wait_error = ""
+                    self.start_send_worker(self.pending_send_response, self.pending_send_label)
+                    self.set_screen(SCREEN_SEND_WAIT)
+                return
+            if cancel_btn.collidepoint(pos):
+                self.pending_send_response = None
+                self.pending_send_label = None
+                self.send_wait_error = ""
+                self.pending_sign_request = None
+                self.pending_review = None
+                self.pin_input = ""
+                self.stop_worker()
+                self.status_message = "Transfer cancelled."
+                self.set_screen(SCREEN_STATUS)
+                return
         if self.footer_safe_wide_button_rect().collidepoint(pos):
+            self.pending_send_response = None
+            self.pending_send_label = None
+            self.send_wait_error = ""
+            self.pending_sign_request = None
+            self.pending_review = None
+            self.pin_input = ""
             self.stop_worker()
             self.status_message = "Transfer cancelled."
             self.set_screen(SCREEN_STATUS)
@@ -472,6 +512,10 @@ class WalletGuiApp:
         return pygame.Rect(16, y, 140, 38), pygame.Rect(164, y, 140, 38)
 
     def clear_sign_button_rects(self) -> tuple[pygame.Rect, pygame.Rect]:
+        y = HEIGHT - FOOTER_HEIGHT - 64
+        return pygame.Rect(18, y, 138, 50), pygame.Rect(164, y, 138, 50)
+
+    def send_wait_button_rects(self) -> tuple[pygame.Rect, pygame.Rect]:
         y = HEIGHT - FOOTER_HEIGHT - 64
         return pygame.Rect(18, y, 138, 50), pygame.Rect(164, y, 138, 50)
 
@@ -764,6 +808,26 @@ class WalletGuiApp:
 
     def draw_send_wait(self) -> None:
         draw_text_center(self.screen, self.fonts["title"], "Send Response", ACCENT, (160, 160))
+        if self.send_wait_error:
+            draw_text_center(
+                self.screen,
+                self.fonts["small"],
+                "Unable to send NFC response. Phone moved away.",
+                ERROR,
+                (160, 192),
+            )
+            wrapped = wrap_text(self.send_wait_error, self.fonts["small"], 270)
+            y = 214
+            for line in wrapped[:4]:
+                draw_text_center(self.screen, self.fonts["small"], line, TEXT_DIM, (160, y))
+                y += 18
+            cancel_btn, retry_btn = self.send_wait_button_rects()
+            draw_round_rect(self.screen, cancel_btn, BUTTON_DARK, radius=24)
+            draw_round_rect(self.screen, retry_btn, ACCENT, radius=24)
+            draw_text_center(self.screen, self.fonts["body"], "Cancel", TEXT_MAIN, cancel_btn.center)
+            draw_text_center(self.screen, self.fonts["body"], "Retry", (15, 20, 5), retry_btn.center)
+            return
+
         draw_text_center(self.screen, self.fonts["body"], "Tap phone again to receive result", TEXT_MAIN, (160, 192))
         draw_text_center(self.screen, self.fonts["small"], "Waiting for second NFC tap", TEXT_DIM, (160, 216))
         cancel_btn = self.footer_safe_wide_button_rect()
