@@ -53,6 +53,7 @@ from wallet_keys import EvmKeypair, SolanaKeypair, load_or_create_all_keypairs  
 
 WIDTH, HEIGHT = 320, 480
 FPS = 30
+FOOTER_HEIGHT = 42
 
 BG = (8, 10, 12)
 CARD_BG = (24, 26, 31)
@@ -352,8 +353,8 @@ class WalletGuiApp:
                 self.set_screen(SCREEN_STATUS)
 
     def handle_home_press(self, pos: tuple[int, int]) -> None:
-        evm_rect = pygame.Rect(20, 124, 135, 135)
-        sol_rect = pygame.Rect(165, 124, 135, 135)
+        evm_rect = pygame.Rect(20, 112, 135, 170)
+        sol_rect = pygame.Rect(165, 112, 135, 170)
         if evm_rect.collidepoint(pos):
             self.selected_chain = "evm"
             self.set_screen(SCREEN_NETWORK)
@@ -362,45 +363,58 @@ class WalletGuiApp:
             self.set_screen(SCREEN_NETWORK)
 
     def handle_network_press(self, pos: tuple[int, int]) -> None:
-        if pygame.Rect(16, 430, 140, 38).collidepoint(pos):
+        back_btn, pair_btn = self.network_button_rects()
+        if back_btn.collidepoint(pos):
             self.set_screen(SCREEN_HOME)
             return
-        if pygame.Rect(164, 430, 140, 38).collidepoint(pos):
+        if pair_btn.collidepoint(pos):
             self.begin_pair_or_sign()
 
     def handle_pairing_press(self, pos: tuple[int, int]) -> None:
-        if pygame.Rect(18, 392, 284, 56).collidepoint(pos):
+        if self.footer_safe_wide_button_rect().collidepoint(pos):
             self.stop_worker()
             self.set_screen(SCREEN_NETWORK)
 
     def handle_clear_sign_press(self, pos: tuple[int, int]) -> None:
-        if pygame.Rect(18, 370, 138, 50).collidepoint(pos):
+        reject_btn, accept_btn = self.clear_sign_button_rects()
+        if reject_btn.collidepoint(pos):
             if self.pending_sign_request:
                 reject_response = self.nfc_service.build_reject_response(self.pending_sign_request)
                 self.start_send_worker(reject_response, "Reject response")
                 self.set_screen(SCREEN_SEND_WAIT)
             return
-        if pygame.Rect(164, 370, 138, 50).collidepoint(pos):
+        if accept_btn.collidepoint(pos):
             self.pin_input = ""
             self.pin_error = ""
             self.pin_prompt = "Enter PIN to Sign"
             self.set_screen(SCREEN_PIN_VERIFY)
             return
-        if pygame.Rect(270, 168, 32, 32).collidepoint(pos):
+        if pygame.Rect(270, 154, 32, 32).collidepoint(pos):
             self.clear_sign_scroll = max(0, self.clear_sign_scroll - 1)
-        if pygame.Rect(270, 204, 32, 32).collidepoint(pos):
+        if pygame.Rect(270, 190, 32, 32).collidepoint(pos):
             max_scroll = max(0, len(self.review_lines_cache) - 9)
             self.clear_sign_scroll = min(max_scroll, self.clear_sign_scroll + 1)
 
     def handle_send_wait_press(self, pos: tuple[int, int]) -> None:
-        if pygame.Rect(18, 392, 284, 56).collidepoint(pos):
+        if self.footer_safe_wide_button_rect().collidepoint(pos):
             self.stop_worker()
             self.status_message = "Transfer cancelled."
             self.set_screen(SCREEN_STATUS)
 
     def handle_status_press(self, pos: tuple[int, int]) -> None:
-        if pygame.Rect(18, 392, 284, 56).collidepoint(pos):
+        if self.footer_safe_wide_button_rect().collidepoint(pos):
             self.set_screen(SCREEN_NETWORK)
+
+    def footer_safe_wide_button_rect(self) -> pygame.Rect:
+        return pygame.Rect(18, HEIGHT - FOOTER_HEIGHT - 66, 284, 56)
+
+    def network_button_rects(self) -> tuple[pygame.Rect, pygame.Rect]:
+        y = HEIGHT - FOOTER_HEIGHT - 48
+        return pygame.Rect(16, y, 140, 38), pygame.Rect(164, y, 140, 38)
+
+    def clear_sign_button_rects(self) -> tuple[pygame.Rect, pygame.Rect]:
+        y = HEIGHT - FOOTER_HEIGHT - 64
+        return pygame.Rect(18, y, 138, 50), pygame.Rect(164, y, 138, 50)
 
     def handle_pin_screen_press(self, pos: tuple[int, int]) -> None:
         for label, rect in self.pin_keypad_layout():
@@ -530,9 +544,8 @@ class WalletGuiApp:
             self.draw_status()
 
     def draw_header(self) -> None:
-        bar_height = 42
-        bar_y = HEIGHT - bar_height
-        draw_round_rect(self.screen, pygame.Rect(0, bar_y, WIDTH, bar_height), (10, 12, 16), radius=0)
+        bar_y = HEIGHT - FOOTER_HEIGHT
+        draw_round_rect(self.screen, pygame.Rect(0, bar_y, WIDTH, FOOTER_HEIGHT), (10, 12, 16), radius=0)
         pygame.draw.line(self.screen, BORDER, (0, bar_y), (WIDTH, bar_y), 1)
         draw_text(self.screen, self.fonts["body"], "BETTER WALLET", ACCENT, (14, bar_y + 12))
         gear_rect = pygame.Rect(280, bar_y + 7, 24, 24)
@@ -563,34 +576,33 @@ class WalletGuiApp:
 
     def draw_network(self) -> None:
         chain_name, network_name, address = self.chain_display()
-        draw_text(self.screen, self.fonts["title"], chain_name, TEXT_MAIN, (18, 82))
-        draw_text(self.screen, self.fonts["body"], network_name, TEXT_DIM, (18, 118))
+        draw_text(self.screen, self.fonts["title"], chain_name, TEXT_MAIN, (18, 34))
+        draw_text(self.screen, self.fonts["body"], network_name, TEXT_DIM, (18, 66))
 
-        card = pygame.Rect(18, 140, 284, 270)
+        card = pygame.Rect(18, 110, 284, 258)
         draw_round_rect(self.screen, card, CARD_BG, radius=18)
         pygame.draw.rect(self.screen, BORDER, card, width=1, border_radius=18)
 
-        draw_text(self.screen, self.fonts["small"], "Public Address", TEXT_DIM, (32, 156))
-        draw_text(self.screen, self.fonts["mono"], shorten_address(address, 14, 10), TEXT_MAIN, (32, 176))
+        draw_text(self.screen, self.fonts["small"], "Public Address", TEXT_DIM, (32, 126))
+        draw_text(self.screen, self.fonts["mono"], shorten_address(address, 14, 10), TEXT_MAIN, (32, 146))
 
         qr_surface = self.get_qr_surface()
-        self.screen.blit(qr_surface, (83, 206))
+        self.screen.blit(qr_surface, (83, 168))
 
-        draw_text_center(self.screen, self.fonts["small"], "Scan for deposit", TEXT_DIM, (160, 376))
+        draw_text_center(self.screen, self.fonts["small"], "Scan for deposit", TEXT_DIM, (160, 346))
 
-        back_btn = pygame.Rect(16, 430, 140, 38)
-        pair_btn = pygame.Rect(164, 430, 140, 38)
+        back_btn, pair_btn = self.network_button_rects()
         draw_round_rect(self.screen, back_btn, BUTTON_DARK, radius=19)
         draw_round_rect(self.screen, pair_btn, ACCENT, radius=19)
         draw_text_center(self.screen, self.fonts["body"], "Back", TEXT_MAIN, back_btn.center)
         draw_text_center(self.screen, self.fonts["body"], "Pair", (15, 20, 5), pair_btn.center)
 
     def draw_pairing(self) -> None:
-        draw_text(self.screen, self.fonts["title"], "Ready to Pair", ACCENT, (58, 158))
-        draw_text_center(self.screen, self.fonts["h2"], "Hold near phone to link", TEXT_MAIN, (160, 206))
-        draw_text_center(self.screen, self.fonts["small"], "Awaiting NFC handshake", TEXT_DIM, (160, 232))
+        draw_text(self.screen, self.fonts["title"], "Ready to Pair", ACCENT, (58, 138))
+        draw_text_center(self.screen, self.fonts["h2"], "Hold near phone to link", TEXT_MAIN, (160, 186))
+        draw_text_center(self.screen, self.fonts["small"], "Awaiting NFC handshake", TEXT_DIM, (160, 212))
 
-        center = (160, 288)
+        center = (160, 268)
         for idx in range(3):
             pulse = (self.frame + idx * 35) % 120
             radius = 30 + idx * 36 + pulse // 4
@@ -601,7 +613,7 @@ class WalletGuiApp:
         draw_round_rect(self.screen, pygame.Rect(136, 264, 48, 48), CARD_BG_ALT, radius=12)
         draw_text_center(self.screen, self.fonts["h2"], "N", ACCENT, (160, 288))
 
-        cancel_btn = pygame.Rect(18, 392, 284, 56)
+        cancel_btn = self.footer_safe_wide_button_rect()
         draw_round_rect(self.screen, cancel_btn, BUTTON_DARK, radius=26)
         draw_text_center(self.screen, self.fonts["h2"], "Cancel", TEXT_MAIN, cancel_btn.center)
 
@@ -609,28 +621,27 @@ class WalletGuiApp:
         title = "Sign Transaction"
         if self.pending_review:
             title = self.pending_review.title
-        draw_text(self.screen, self.fonts["title"], title, TEXT_MAIN, (18, 82))
-        draw_text(self.screen, self.fonts["small"], "SECURITY LEVEL: HIGH", TEXT_DIM, (18, 118))
+        draw_text(self.screen, self.fonts["title"], title, TEXT_MAIN, (18, 70))
+        draw_text(self.screen, self.fonts["small"], "SECURITY LEVEL: HIGH", TEXT_DIM, (18, 106))
 
-        panel = pygame.Rect(18, 142, 284, 220)
+        panel = pygame.Rect(18, 126, 284, 218)
         draw_round_rect(self.screen, panel, CARD_BG, radius=16)
         pygame.draw.rect(self.screen, BORDER, panel, width=1, border_radius=16)
 
         visible_lines = self.review_lines_cache[self.clear_sign_scroll : self.clear_sign_scroll + 9]
-        y = 154
+        y = 138
         for line in visible_lines:
             draw_text(self.screen, self.fonts["small"], line, TEXT_MAIN, (30, y))
             y += 22
 
-        up_btn = pygame.Rect(270, 168, 32, 32)
-        down_btn = pygame.Rect(270, 204, 32, 32)
+        up_btn = pygame.Rect(270, 154, 32, 32)
+        down_btn = pygame.Rect(270, 190, 32, 32)
         draw_round_rect(self.screen, up_btn, CARD_BG_ALT, radius=10)
         draw_round_rect(self.screen, down_btn, CARD_BG_ALT, radius=10)
         draw_text_center(self.screen, self.fonts["small"], "^", TEXT_MAIN, up_btn.center)
         draw_text_center(self.screen, self.fonts["small"], "v", TEXT_MAIN, down_btn.center)
 
-        reject_btn = pygame.Rect(18, 370, 138, 50)
-        accept_btn = pygame.Rect(164, 370, 138, 50)
+        reject_btn, accept_btn = self.clear_sign_button_rects()
         draw_round_rect(self.screen, reject_btn, BUTTON_DARK, radius=24)
         draw_round_rect(self.screen, accept_btn, ACCENT, radius=24)
         draw_text_center(self.screen, self.fonts["body"], "Reject", TEXT_MAIN, reject_btn.center)
@@ -660,24 +671,24 @@ class WalletGuiApp:
             draw_text_center(self.screen, self.fonts["small"], self.pin_error, ERROR, (160, 450))
 
     def draw_send_wait(self) -> None:
-        draw_text_center(self.screen, self.fonts["title"], "Send Response", ACCENT, (160, 180))
-        draw_text_center(self.screen, self.fonts["body"], "Tap phone again to receive result", TEXT_MAIN, (160, 212))
-        draw_text_center(self.screen, self.fonts["small"], "Waiting for second NFC tap", TEXT_DIM, (160, 236))
-        cancel_btn = pygame.Rect(18, 392, 284, 56)
+        draw_text_center(self.screen, self.fonts["title"], "Send Response", ACCENT, (160, 160))
+        draw_text_center(self.screen, self.fonts["body"], "Tap phone again to receive result", TEXT_MAIN, (160, 192))
+        draw_text_center(self.screen, self.fonts["small"], "Waiting for second NFC tap", TEXT_DIM, (160, 216))
+        cancel_btn = self.footer_safe_wide_button_rect()
         draw_round_rect(self.screen, cancel_btn, BUTTON_DARK, radius=26)
         draw_text_center(self.screen, self.fonts["h2"], "Cancel", TEXT_MAIN, cancel_btn.center)
 
     def draw_status(self) -> None:
-        panel = pygame.Rect(18, 128, 284, 240)
+        panel = pygame.Rect(18, 112, 284, 234)
         draw_round_rect(self.screen, panel, CARD_BG, radius=18)
         pygame.draw.rect(self.screen, BORDER, panel, width=1, border_radius=18)
-        draw_text_center(self.screen, self.fonts["h1"], "Status", ACCENT, (160, 158))
+        draw_text_center(self.screen, self.fonts["h1"], "Status", ACCENT, (160, 142))
         lines = wrap_text(self.status_message or "Done", self.fonts["body"], 240)
-        y = 190
+        y = 174
         for line in lines[:7]:
             draw_text_center(self.screen, self.fonts["body"], line, TEXT_MAIN, (160, y))
             y += 24
-        back_btn = pygame.Rect(18, 392, 284, 56)
+        back_btn = self.footer_safe_wide_button_rect()
         draw_round_rect(self.screen, back_btn, ACCENT, radius=26)
         draw_text_center(self.screen, self.fonts["h2"], "Back", (15, 20, 5), back_btn.center)
 
