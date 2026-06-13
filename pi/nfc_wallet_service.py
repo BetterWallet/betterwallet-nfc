@@ -112,7 +112,7 @@ def ensure_registry():
 
 def format_max_fees(gas_limit: int, max_fee_per_gas_wei: int) -> str:
     max_fee_total_wei = gas_limit * max_fee_per_gas_wei
-    return f"{format_eth_from_wei(max_fee_total_wei)} ETH ({max_fee_total_wei} wei)"
+    return f"{format_eth_from_wei(max_fee_total_wei)} ETH"
 
 
 def translation_title_and_lines(translated: Any) -> tuple[str, list[str]]:
@@ -320,10 +320,10 @@ class NfcWalletService:
         log(f"To: {unsigned_tx['to']}")
         log(f"Chain ID: {SEPOLIA_CHAIN_ID}")
         log(f"Nonce: {nonce}")
-        log(f"Value: {value_wei} wei ({format_eth_from_wei(value_wei)} ETH)")
+        log(f"Value: {format_eth_from_wei(value_wei)} ETH")
         log(f"Gas limit: {gas_limit}")
-        log(f"Max fee per gas: {max_fee} wei ({max_fee / 1e9:.9f} gwei)")
-        log(f"Max priority fee per gas: {max_priority_fee} wei ({max_priority_fee / 1e9:.9f} gwei)")
+        log(f"Max fee per gas: {max_fee / 1e9:.9f} gwei")
+        log(f"Max priority fee per gas: {max_priority_fee / 1e9:.9f} gwei")
         log(f"Unsigned tx JSON: {json.dumps(unsigned_tx, sort_keys=True)}")
 
         digest: str
@@ -343,7 +343,7 @@ class NfcWalletService:
             log("Intent: Plain ETH transfer")
             lines = [
                 *common_lines,
-                f"Amount: {format_eth_from_wei(value_wei)} ETH ({value_wei} wei)",
+                f"Amount: {format_eth_from_wei(value_wei)} ETH",
                 f"To: {unsigned_tx['to']}",
                 f"Max Fees: {max_fees_label}",
             ]

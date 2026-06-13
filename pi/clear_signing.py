@@ -98,10 +98,10 @@ def display_clear_signing_review(unsigned_tx: dict, keypair: dict[str, str]) -> 
     log(f"To: {unsigned_tx['to']}")
     log(f"Chain ID: {SEPOLIA_CHAIN_ID}")
     log(f"Nonce: {nonce}")
-    log(f"Value: {value_wei} wei ({format_eth_from_wei(value_wei)} ETH)")
+    log(f"Value: {format_eth_from_wei(value_wei)} ETH")
     log(f"Gas limit: {gas_limit}")
-    log(f"Max fee per gas: {max_fee} wei ({max_fee / 1e9:.9f} gwei)")
-    log(f"Max priority fee per gas: {max_priority_fee} wei ({max_priority_fee / 1e9:.9f} gwei)")
+    log(f"Max fee per gas: {max_fee / 1e9:.9f} gwei")
+    log(f"Max priority fee per gas: {max_priority_fee / 1e9:.9f} gwei")
     log(f"Unsigned tx JSON: {json.dumps(unsigned_tx, sort_keys=True)}")
 
     digest = calldata_digest_hex(calldata_hex)

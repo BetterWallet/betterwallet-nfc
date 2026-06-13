@@ -556,7 +556,7 @@ class WalletGuiApp:
             "OK",
         ]
         result: list[tuple[str, pygame.Rect]] = []
-        x0, y0 = 24, 200
+        x0, y0 = 24, 154
         w, h = 84, 64
         gap = 10
         for idx, label in enumerate(labels):
@@ -594,7 +594,8 @@ class WalletGuiApp:
 
     def draw(self) -> None:
         self.screen.fill(BG)
-        self.draw_header()
+        if self.current_screen not in (SCREEN_PIN_CREATE, SCREEN_PIN_CONFIRM, SCREEN_PIN_VERIFY):
+            self.draw_header()
         if self.current_screen == SCREEN_HOME:
             self.draw_home()
         elif self.current_screen == SCREEN_NETWORK:
@@ -739,12 +740,12 @@ class WalletGuiApp:
         draw_text_center(self.screen, self.fonts["body"], "Accept", (15, 20, 5), accept_btn.center)
 
     def draw_pin_screen(self) -> None:
-        draw_text_center(self.screen, self.fonts["title"], "Enter PIN", TEXT_MAIN, (160, 112))
-        draw_text_center(self.screen, self.fonts["small"], self.pin_prompt, TEXT_DIM, (160, 138))
+        draw_text_center(self.screen, self.fonts["title"], "Enter PIN", TEXT_MAIN, (160, 74))
+        draw_text_center(self.screen, self.fonts["small"], self.pin_prompt, TEXT_DIM, (160, 100))
 
         for idx in range(6):
             color = ACCENT if idx < len(self.pin_input) else BORDER
-            pygame.draw.circle(self.screen, color, (80 + idx * 32, 168), 8, 0 if idx < len(self.pin_input) else 2)
+            pygame.draw.circle(self.screen, color, (80 + idx * 32, 130), 8, 0 if idx < len(self.pin_input) else 2)
 
         for label, rect in self.pin_keypad_layout():
             if label == "OK":
@@ -759,7 +760,7 @@ class WalletGuiApp:
             draw_text_center(self.screen, self.fonts["h2"], label, fg, rect.center)
 
         if self.pin_error:
-            draw_text_center(self.screen, self.fonts["small"], self.pin_error, ERROR, (160, 450))
+            draw_text_center(self.screen, self.fonts["small"], self.pin_error, ERROR, (160, 456))
 
     def draw_send_wait(self) -> None:
         draw_text_center(self.screen, self.fonts["title"], "Send Response", ACCENT, (160, 160))
