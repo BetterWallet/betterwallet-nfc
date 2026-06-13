@@ -3,3 +3,7 @@ eth-keys
 pycryptodome
 eth-account
 clearsig
+qrcode
+Pillow
+PyNaCl
+base58
