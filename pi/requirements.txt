@@ -2,3 +2,4 @@ pn532pi
 eth-keys
 pycryptodome
 eth-account
+clearsig

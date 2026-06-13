@@ -32,7 +32,7 @@ fi
 
 # Install Python deps
 "$VENV/bin/pip" install --upgrade pip
-"$VENV/bin/pip" install -r "$SCRIPT_DIR/requirements.txt"
+"$VENV/bin/pip" install --ignore-requires-python -r "$SCRIPT_DIR/requirements.txt"
 
 # Apply pn532pi I2C patch (fixes errno 121 / EREMOTEIO on Linux 5.3+, removes
 # invalid wakeup write, and handles early-response frames on Pi 5)
