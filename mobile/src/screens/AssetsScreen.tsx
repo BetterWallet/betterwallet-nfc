@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useSendFlow } from '../state/sendFlow';
+import { useWallet } from '../state/wallet';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Assets'>;
 
@@ -15,11 +16,25 @@ const assets = [
 
 export function AssetsScreen({ navigation }: Props) {
   const { reset } = useSendFlow();
+  const { wallet, clearWallet } = useWallet();
 
   const goToSend = () => {
     reset();
     navigation.navigate('Send');
   };
+
+  if (!wallet) {
+    return (
+      <SafeAreaView style={s.root}>
+        <View style={s.emptyWrap}>
+          <Text style={s.emptyText}>No paired wallet profile found.</Text>
+          <Pressable style={s.primaryAction} onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Setup' }] })}>
+            <Text style={s.primaryActionText}>Go to Setup</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={s.root}>
@@ -29,11 +44,24 @@ export function AssetsScreen({ navigation }: Props) {
             <Text style={s.icon}>☰</Text>
           </Pressable>
           <View style={s.walletPill}>
-            <Text style={s.walletPillText}>0x2489...4903</Text>
+            <Text style={s.walletPillText}>
+              {wallet.address.slice(0, 6)}...{wallet.address.slice(-4)}
+            </Text>
           </View>
           <Pressable style={s.iconButton}>
             <Text style={s.icon}>⚙</Text>
           </Pressable>
+        </View>
+
+        <View style={s.identityCard}>
+          <Text style={s.identityLabel}>Network</Text>
+          <Text style={s.identityValue}>{wallet.networkName} (chainId {wallet.chainId})</Text>
+          <Text style={[s.identityLabel, s.identityLabelTop]}>Wallet Address</Text>
+          <Text style={s.identityMono}>{wallet.address}</Text>
+          <Text style={[s.identityLabel, s.identityLabelTop]}>Public Key</Text>
+          <Text style={s.identityMono} numberOfLines={2}>
+            {wallet.publicKey ?? 'Not provided in minimal pairing response'}
+          </Text>
         </View>
 
         <View style={s.balanceHero}>
@@ -87,7 +115,9 @@ export function AssetsScreen({ navigation }: Props) {
         </View>
         <Text style={s.bottomItem}>Market</Text>
         <Text style={s.bottomItem}>Alerts</Text>
-        <Text style={s.bottomItem}>Profile</Text>
+        <Pressable onPress={() => clearWallet()}>
+          <Text style={s.bottomItem}>Unpair</Text>
+        </Pressable>
       </View>
     </SafeAreaView>
   );
@@ -200,7 +230,7 @@ const s = StyleSheet.create({
     fontWeight: '700',
   },
   listHeader: {
-    marginTop: 34,
+    marginTop: 28,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -289,5 +319,54 @@ const s = StyleSheet.create({
     color: '#868686',
     fontSize: 12,
     fontWeight: '600',
+  },
+  identityCard: {
+    marginTop: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    backgroundColor: '#1a1a1a',
+    padding: 14,
+  },
+  identityLabel: {
+    color: '#9d9d9d',
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  identityLabelTop: {
+    marginTop: 12,
+  },
+  identityValue: {
+    color: '#f2f2f2',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 5,
+  },
+  identityMono: {
+    color: '#dcdcdc',
+    fontSize: 12,
+    marginTop: 6,
+  },
+  emptyWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    paddingHorizontal: 24,
+  },
+  emptyText: {
+    color: '#f0f0f0',
+    fontSize: 16,
+  },
+  primaryAction: {
+    backgroundColor: '#c8f323',
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  primaryActionText: {
+    color: '#1a2400',
+    fontWeight: '700',
   },
 });

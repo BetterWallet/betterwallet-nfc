@@ -1,12 +1,16 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { AssetsScreen } from '../screens/AssetsScreen';
 import { ReviewScreen } from '../screens/ReviewScreen';
 import { ScanCardScreen } from '../screens/ScanCardScreen';
 import { SendScreen } from '../screens/SendScreen';
+import { SetupWalletScreen } from '../screens/SetupWalletScreen';
 import { TransactionSuccessScreen } from '../screens/TransactionSuccessScreen';
+import { useWallet } from '../state/wallet';
 
 export type RootStackParamList = {
+  Setup: undefined;
   Assets: undefined;
   Send: undefined;
   Review: undefined;
@@ -17,6 +21,31 @@ export type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
+  const { wallet, isBootstrapping } = useWallet();
+
+  if (isBootstrapping) {
+    return (
+      <View style={s.bootRoot}>
+        <ActivityIndicator color="#c8f323" size="large" />
+        <Text style={s.bootText}>Loading wallet profile...</Text>
+      </View>
+    );
+  }
+
+  if (!wallet) {
+    return (
+      <Stack.Navigator
+        initialRouteName="Setup"
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: '#131313' },
+        }}
+      >
+        <Stack.Screen name="Setup" component={SetupWalletScreen} />
+      </Stack.Navigator>
+    );
+  }
+
   return (
     <Stack.Navigator
       initialRouteName="Assets"
@@ -33,3 +62,17 @@ export function RootNavigator() {
     </Stack.Navigator>
   );
 }
+
+const s = StyleSheet.create({
+  bootRoot: {
+    flex: 1,
+    backgroundColor: '#131313',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  bootText: {
+    color: '#d0d0d0',
+    fontSize: 14,
+  },
+});

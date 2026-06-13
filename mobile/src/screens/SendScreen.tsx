@@ -63,6 +63,7 @@ export function SendScreen({ navigation }: Props) {
           </Pressable>
           <Text style={s.title}>Send</Text>
           <Text style={s.subtitle}>Better Wallet</Text>
+          <Text style={s.networkBadge}>EVM / Sepolia</Text>
         </View>
 
         <View style={s.section}>
@@ -140,6 +141,18 @@ const s = StyleSheet.create({
     color: '#8e8e8e',
     fontSize: 14,
     marginTop: 4,
+  },
+  networkBadge: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    color: '#c8f323',
+    borderColor: '#405000',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    fontSize: 12,
+    fontWeight: '600',
   },
   section: {
     marginBottom: 22,
