@@ -17,8 +17,6 @@ export const TOKEN_COINGECKO_IDS = {
   WETH: 'weth',
 } as const;
 
-type SupportedTokenAddress = (typeof SEPOLIA_TOKENS)[keyof typeof SEPOLIA_TOKENS];
-
 export type RoutingType =
   | 'CLASSIC'
   | 'WRAP'
@@ -43,7 +41,7 @@ export interface ApprovalTx {
 
 export interface CheckApprovalParams {
   walletAddress: string;
-  token: SupportedTokenAddress;
+  token: string;
   amount: string;
   chainId?: number;
 }
@@ -54,8 +52,8 @@ interface CheckApprovalResponse {
 
 export interface QuoteParams {
   swapper: string;
-  tokenIn: SupportedTokenAddress;
-  tokenOut: SupportedTokenAddress;
+  tokenIn: string;
+  tokenOut: string;
   amount: string;
   type?: 'EXACT_INPUT' | 'EXACT_OUTPUT';
   slippageTolerance?: number;

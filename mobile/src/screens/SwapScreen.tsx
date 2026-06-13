@@ -13,6 +13,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { TokenSelectModal } from '../components/TokenSelectModal';
+import { SEPOLIA_SWAP_TOKENS, type SwapTokenOption } from '../config/swapTokens';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { parseTypedDataSignatureMessage, parseSignedTxMessage, broadcastSignedResult } from '../services/broadcast';
 import {
@@ -38,35 +40,7 @@ import { useWallet } from '../state/wallet';
 import { useHCE } from '../useHCE';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Swap'>;
-
-type SwapToken = {
-  symbol: keyof typeof TOKEN_COINGECKO_IDS;
-  label: string;
-};
-
-type NetworkOption = {
-  id: 'sepolia';
-  label: string;
-  valueLabel: string;
-};
-
-const TOKENS: SwapToken[] = [
-  { symbol: 'ETH', label: 'Ethereum' },
-  { symbol: 'USDC', label: 'USD Coin' },
-  { symbol: 'WETH', label: 'Wrapped Ether' },
-];
-const NETWORK_OPTIONS: NetworkOption[] = [
-  {
-    id: 'sepolia',
-    label: 'Ethereum Sepolia',
-    valueLabel: 'Sepolia',
-  },
-];
-const TOKEN_DECIMALS: Record<SwapToken['symbol'], number> = {
-  ETH: 18,
-  USDC: 6,
-  WETH: 18,
-};
+type CuratedSymbol = keyof typeof TOKEN_COINGECKO_IDS;
 const DEFAULT_MAX_FEE_PER_GAS_WEI = '30000000000';
 const DEFAULT_MAX_PRIORITY_FEE_PER_GAS_WEI = '1500000000';
 const FALLBACK_SWAP_GAS_LIMIT = '300000';
@@ -78,86 +52,88 @@ export function SwapScreen({ navigation }: Props) {
   const { loadPayload, waitForSignedPayloadOnce, clearSignedTxListener } = useHCE();
   const { setReview, setResult, setStage, setError: setFlowError } = useSendFlow();
   const [amount, setAmount] = useState('');
-  const [tokenIn, setTokenIn] = useState<SwapToken>(TOKENS[0]);
-  const [tokenOut, setTokenOut] = useState<SwapToken>(TOKENS[1]);
+  const [tokenIn, setTokenIn] = useState<SwapTokenOption>(SEPOLIA_SWAP_TOKENS[0]);
+  const [tokenOut, setTokenOut] = useState<SwapTokenOption>(SEPOLIA_SWAP_TOKENS[1]);
   const [slippage, setSlippage] = useState('1');
   const [quoteHint, setQuoteHint] = useState('Enter an amount and tap Get Quote.');
   const [quoteResponse, setQuoteResponse] = useState<QuoteResponse | null>(null);
   const [approvalTx, setApprovalTx] = useState<ApprovalTx | null>(null);
   const [expectedOutputAmount, setExpectedOutputAmount] = useState('0');
   const [quoteGasUsd, setQuoteGasUsd] = useState<string | null>(null);
-  const [priceBySymbol, setPriceBySymbol] = useState<Record<SwapToken['symbol'], number>>({
+  const [priceBySymbol, setPriceBySymbol] = useState<Record<CuratedSymbol, number>>({
     ETH: 0,
     USDC: 0,
     WETH: 0,
   });
-  const [iconBySymbol, setIconBySymbol] = useState<Record<SwapToken['symbol'], string>>({
+  const [iconBySymbol, setIconBySymbol] = useState<Record<CuratedSymbol, string>>({
     ETH: '',
     USDC: '',
     WETH: '',
-  });
-  const [tokenNameBySymbol, setTokenNameBySymbol] = useState<Record<SwapToken['symbol'], string>>({
-    ETH: 'Ethereum',
-    USDC: 'USD Coin',
-    WETH: 'Wrapped Ether',
   });
   const [isLoadingQuote, setIsLoadingQuote] = useState(false);
   const [isSigning, setIsSigning] = useState(false);
   const [signingHint, setSigningHint] = useState<string | null>(null);
   const [error, setLocalError] = useState<string | null>(null);
-  const [networkMenuOpen, setNetworkMenuOpen] = useState(false);
-  const [selectedNetwork, setSelectedNetwork] = useState<NetworkOption>(NETWORK_OPTIONS[0]);
+  const [tokenPickerSide, setTokenPickerSide] = useState<'sell' | 'buy' | null>(null);
   const quoteRequestRef = useRef(0);
 
   const hasQuote = quoteResponse !== null;
   const canRequestQuote = useMemo(() => {
     const value = Number(amount);
-    return Number.isFinite(value) && value > 0 && tokenIn.symbol !== tokenOut.symbol;
-  }, [amount, tokenIn.symbol, tokenOut.symbol]);
+    return (
+      Number.isFinite(value) &&
+      value > 0 &&
+      tokenIn.address.toLowerCase() !== tokenOut.address.toLowerCase()
+    );
+  }, [amount, tokenIn.address, tokenOut.address]);
   const canExecuteSwap = hasQuote && !isLoadingQuote && !isSigning;
   const sellAmountNumber = Number(amount || '0');
   const buyAmountNumber = Number(expectedOutputAmount || '0');
+  const getTokenPrice = (token: SwapTokenOption): number => {
+    if (!token.isCurated) {
+      return 0;
+    }
+    return priceBySymbol[token.symbol as CuratedSymbol] || 0;
+  };
   const sellUsd = useMemo(
-    () => sellAmountNumber * (priceBySymbol[tokenIn.symbol] || 0),
-    [sellAmountNumber, priceBySymbol, tokenIn.symbol],
+    () => sellAmountNumber * getTokenPrice(tokenIn),
+    [sellAmountNumber, priceBySymbol, tokenIn],
   );
   const buyUsd = useMemo(
-    () => buyAmountNumber * (priceBySymbol[tokenOut.symbol] || 0),
-    [buyAmountNumber, priceBySymbol, tokenOut.symbol],
+    () => buyAmountNumber * getTokenPrice(tokenOut),
+    [buyAmountNumber, priceBySymbol, tokenOut],
   );
 
-  const cycleTokenIn = () => {
-    const index = TOKENS.findIndex((token) => token.symbol === tokenIn.symbol);
-    const next = TOKENS[(index + 1) % TOKENS.length];
-    if (next.symbol === tokenOut.symbol) {
-      const fallback = TOKENS[(index + 2) % TOKENS.length];
-      setTokenIn(fallback);
-      return;
-    }
-    setTokenIn(next);
-  };
-
-  const cycleTokenOut = () => {
-    const index = TOKENS.findIndex((token) => token.symbol === tokenOut.symbol);
-    const next = TOKENS[(index + 1) % TOKENS.length];
-    if (next.symbol === tokenIn.symbol) {
-      const fallback = TOKENS[(index + 2) % TOKENS.length];
-      setTokenOut(fallback);
-      return;
-    }
-    setTokenOut(next);
+  const resetQuoteState = () => {
+    setQuoteResponse(null);
+    setExpectedOutputAmount('0');
+    setApprovalTx(null);
+    setQuoteGasUsd(null);
   };
 
   const onSwapDirection = () => {
     setTokenIn(tokenOut);
     setTokenOut(tokenIn);
-    setQuoteResponse(null);
-    setExpectedOutputAmount('0');
+    resetQuoteState();
   };
 
-  const onSelectNetwork = (option: NetworkOption) => {
-    setSelectedNetwork(option);
-    setNetworkMenuOpen(false);
+  const onSelectToken = (nextToken: SwapTokenOption) => {
+    if (!tokenPickerSide) {
+      return;
+    }
+    if (tokenPickerSide === 'sell') {
+      if (nextToken.address.toLowerCase() === tokenOut.address.toLowerCase()) {
+        setTokenOut(tokenIn);
+      }
+      setTokenIn(nextToken);
+    } else {
+      if (nextToken.address.toLowerCase() === tokenIn.address.toLowerCase()) {
+        setTokenIn(tokenOut);
+      }
+      setTokenOut(nextToken);
+    }
+    resetQuoteState();
+    setTokenPickerSide(null);
   };
 
   const loadMarketData = async () => {
@@ -172,11 +148,6 @@ export function SwapScreen({ navigation }: Props) {
         ETH: market.ETH.imageUrl,
         USDC: market.USDC.imageUrl,
         WETH: market.WETH.imageUrl,
-      });
-      setTokenNameBySymbol({
-        ETH: market.ETH.name,
-        USDC: market.USDC.name,
-        WETH: market.WETH.name,
       });
     } catch {
       // Keep defaults if market data fails.
@@ -204,27 +175,36 @@ export function SwapScreen({ navigation }: Props) {
     quoteRequestRef.current = requestId;
 
     try {
-      const rawAmount = parseUnits(amount.trim(), TOKEN_DECIMALS[tokenIn.symbol]).toString();
-      const approvalToken = tokenIn.symbol === 'ETH' ? SEPOLIA_TOKENS.WETH : SEPOLIA_TOKENS[tokenIn.symbol];
+      const rawAmount = parseUnits(amount.trim(), tokenIn.decimals).toString();
+      const approvalToken =
+        tokenIn.address.toLowerCase() === SEPOLIA_TOKENS.ETH.toLowerCase()
+          ? SEPOLIA_TOKENS.WETH
+          : tokenIn.address;
       const approval = await checkApproval({
         walletAddress: wallet.address,
         token: approvalToken,
         amount: rawAmount,
       });
+      if (quoteRequestRef.current !== requestId) {
+        return null;
+      }
       setApprovalTx(approval);
 
       const nextQuote = await quoteSwap({
         swapper: wallet.address,
-        tokenIn: SEPOLIA_TOKENS[tokenIn.symbol],
-        tokenOut: SEPOLIA_TOKENS[tokenOut.symbol],
+        tokenIn: tokenIn.address,
+        tokenOut: tokenOut.address,
         amount: rawAmount,
         slippageTolerance: Number(slippage) || 1,
       });
+      if (quoteRequestRef.current !== requestId) {
+        return null;
+      }
 
       const outRaw = getQuoteOutputAmount(nextQuote);
       const gasUsd = getQuoteGasUsd(nextQuote);
       if (outRaw) {
-        const formatted = formatUnits(outRaw, TOKEN_DECIMALS[tokenOut.symbol]);
+        const formatted = formatUnits(outRaw, tokenOut.decimals);
         setExpectedOutputAmount(formatted);
       } else {
         setExpectedOutputAmount('0');
@@ -241,11 +221,15 @@ export function SwapScreen({ navigation }: Props) {
       );
       return nextQuote;
     } catch (err) {
-      setQuoteHint('Failed to fetch quote.');
-      setLocalError(err instanceof Error ? err.message : 'Failed to fetch quote.');
+      if (quoteRequestRef.current === requestId) {
+        setQuoteHint('Failed to fetch quote.');
+        setLocalError(err instanceof Error ? err.message : 'Failed to fetch quote.');
+      }
       return null;
     } finally {
-      setIsLoadingQuote(false);
+      if (quoteRequestRef.current === requestId) {
+        setIsLoadingQuote(false);
+      }
     }
   };
 
@@ -261,7 +245,7 @@ export function SwapScreen({ navigation }: Props) {
       void requestQuote();
     }, 600);
     return () => clearTimeout(timer);
-  }, [wallet?.address, tokenIn.symbol, tokenOut.symbol, amount, slippage]);
+  }, [wallet?.address, tokenIn.address, tokenOut.address, amount, slippage]);
 
   const createUnsignedTx = (tx: SwapTx | ApprovalTx) => {
     return {
@@ -458,7 +442,7 @@ export function SwapScreen({ navigation }: Props) {
                 placeholder="0"
                 placeholderTextColor="#777"
               />
-              <Pressable style={s.tokenButton} onPress={cycleTokenIn}>
+              <Pressable style={s.tokenButton} onPress={() => setTokenPickerSide('sell')}>
                 <TokenPillIcon symbol={tokenIn.symbol} iconBySymbol={iconBySymbol} />
                 <Text style={s.tokenButtonText}>{tokenIn.symbol}</Text>
               </Pressable>
@@ -474,7 +458,7 @@ export function SwapScreen({ navigation }: Props) {
             <Text style={s.inputLabel}>Buy</Text>
             <View style={s.row}>
               <Text style={s.amountPreview}>{formatAmount(buyAmountNumber)}</Text>
-              <Pressable style={s.tokenButton} onPress={cycleTokenOut}>
+              <Pressable style={s.tokenButton} onPress={() => setTokenPickerSide('buy')}>
                 <TokenPillIcon symbol={tokenOut.symbol} iconBySymbol={iconBySymbol} />
                 <Text style={s.tokenButtonText}>{tokenOut.symbol}</Text>
               </Pressable>
@@ -484,34 +468,6 @@ export function SwapScreen({ navigation }: Props) {
         </View>
 
         <View style={s.optionsCard}>
-          <View style={s.optionRow}>
-            <Text style={s.optionLabel}>Network</Text>
-            <View style={s.networkPickerWrap}>
-              <Pressable
-                style={[s.networkPicker, networkMenuOpen && s.networkPickerOpen]}
-                onPress={() => setNetworkMenuOpen((open) => !open)}
-              >
-                <Text style={s.networkPickerValue}>{selectedNetwork.valueLabel}</Text>
-                <Text style={s.networkPickerChevron}>▾</Text>
-              </Pressable>
-              {networkMenuOpen ? (
-                <View style={s.networkMenu}>
-                  {NETWORK_OPTIONS.map((option) => (
-                    <Pressable
-                      key={option.id}
-                      style={s.networkMenuItem}
-                      onPress={() => onSelectNetwork(option)}
-                    >
-                      <Text style={s.networkMenuItemLabel}>{option.label}</Text>
-                      {selectedNetwork.id === option.id ? (
-                        <Text style={s.networkMenuItemCheck}>✓</Text>
-                      ) : null}
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
-            </View>
-          </View>
           <View style={s.optionRow}>
             <Text style={s.optionLabel}>Slippage</Text>
             <TextInput
@@ -539,7 +495,7 @@ export function SwapScreen({ navigation }: Props) {
 
         <Text style={s.quoteHint}>{quoteHint}</Text>
         <Text style={s.tokenHint}>
-          {tokenNameBySymbol[tokenIn.symbol]} → {tokenNameBySymbol[tokenOut.symbol]}
+          {tokenIn.name} → {tokenOut.name}
         </Text>
 
         {error ? <Text style={s.error}>{error}</Text> : null}
@@ -559,6 +515,15 @@ export function SwapScreen({ navigation }: Props) {
             <Text style={s.ctaText}>{isLoadingQuote ? 'Calculating...' : 'Get started'}</Text>
           </Pressable>
         </View>
+        <TokenSelectModal
+          visible={tokenPickerSide !== null}
+          side={tokenPickerSide ?? 'sell'}
+          selectedToken={tokenPickerSide === 'buy' ? tokenOut : tokenIn}
+          excludeToken={tokenPickerSide === 'buy' ? tokenIn : tokenOut}
+          iconBySymbol={iconBySymbol}
+          onClose={() => setTokenPickerSide(null)}
+          onSelect={onSelectToken}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -586,8 +551,8 @@ function TokenPillIcon({
   symbol,
   iconBySymbol,
 }: {
-  symbol: SwapToken['symbol'];
-  iconBySymbol: Record<SwapToken['symbol'], string>;
+  symbol: string;
+  iconBySymbol: Record<string, string>;
 }) {
   const uri = iconBySymbol[symbol];
   if (uri) {
@@ -775,65 +740,6 @@ const s = StyleSheet.create({
     color: '#a9a9a9',
     fontSize: 13,
     fontWeight: '600',
-  },
-  networkPickerWrap: {
-    position: 'relative',
-  },
-  networkPicker: {
-    minWidth: 104,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#353535',
-    backgroundColor: '#171717',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  networkPickerOpen: {
-    borderColor: '#c8f323',
-  },
-  networkPickerValue: {
-    color: '#f2f2f2',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  networkPickerChevron: {
-    color: '#9a9a9a',
-    fontSize: 12,
-    lineHeight: 14,
-  },
-  networkMenu: {
-    position: 'absolute',
-    top: 36,
-    right: 0,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#2e2e2e',
-    backgroundColor: '#1d1d1d',
-    minWidth: 168,
-    overflow: 'hidden',
-    zIndex: 20,
-  },
-  networkMenuItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  networkMenuItemLabel: {
-    color: '#d9d9d9',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  networkMenuItemCheck: {
-    color: '#c8f323',
-    fontSize: 13,
-    fontWeight: '700',
   },
   slippageInput: {
     borderRadius: 10,
