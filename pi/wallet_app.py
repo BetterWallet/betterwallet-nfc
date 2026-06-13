@@ -576,8 +576,19 @@ class WalletGuiApp:
 
     def draw_network(self) -> None:
         chain_name, network_name, address = self.chain_display()
-        draw_text(self.screen, self.fonts["title"], chain_name, TEXT_MAIN, (18, 34))
-        draw_text(self.screen, self.fonts["body"], network_name, TEXT_DIM, (18, 66))
+        chain_key = "solana" if self.selected_chain == "solana" else "evm"
+        heading_icon_rect = pygame.Rect(18, 36, 30, 30)
+        draw_round_rect(self.screen, heading_icon_rect, CARD_BG_ALT, radius=15)
+        heading_logo = self.chain_logos.get(chain_key)
+        if heading_logo is not None:
+            logo_small = pygame.transform.smoothscale(heading_logo, (22, 22))
+            self.screen.blit(logo_small, logo_small.get_rect(center=heading_icon_rect.center))
+        else:
+            draw_text_center(self.screen, self.fonts["small"], chain_name[0], ACCENT, heading_icon_rect.center)
+
+        heading_text_x = heading_icon_rect.right + 10
+        draw_text(self.screen, self.fonts["title"], chain_name, TEXT_MAIN, (heading_text_x, 32))
+        draw_text(self.screen, self.fonts["body"], network_name, TEXT_DIM, (heading_text_x, 66))
 
         card = pygame.Rect(18, 110, 284, 258)
         draw_round_rect(self.screen, card, CARD_BG, radius=18)
