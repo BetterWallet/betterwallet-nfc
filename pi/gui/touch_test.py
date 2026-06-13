@@ -1,10 +1,9 @@
-import os
 import sys
 import time
 
-os.environ.setdefault("SDL_VIDEODRIVER", "kmsdrm")
-os.environ.setdefault("SDL_VIDEO_KMSDRM_DEVICE_INDEX", "1")
-os.environ.setdefault("SDL_MOUSE_RELATIVE", "0")
+from display_setup import ensure_system_pygame
+
+ensure_system_pygame()
 
 import pygame
 

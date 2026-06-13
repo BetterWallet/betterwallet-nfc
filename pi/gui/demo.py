@@ -1,11 +1,10 @@
 import math
-import os
 import sys
 import time
 
-# Use KMS/DRM directly — no X server needed on Pi 5
-os.environ.setdefault("SDL_VIDEODRIVER", "kmsdrm")
-os.environ.setdefault("SDL_VIDEO_KMSDRM_DEVICE_INDEX", "1")  # card1 = SPI LCD
+from display_setup import ensure_system_pygame
+
+ensure_system_pygame()
 
 import pygame
 

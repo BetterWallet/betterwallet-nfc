@@ -9,4 +9,4 @@ export SDL_VIDEODRIVER=kmsdrm
 export SDL_VIDEO_KMSDRM_DEVICE_INDEX=1
 export SDL_MOUSE_RELATIVE=0
 
-exec python3 "$SCRIPT_DIR/demo.py" "$@"
+exec /usr/bin/python3 "$SCRIPT_DIR/demo.py" "$@"
