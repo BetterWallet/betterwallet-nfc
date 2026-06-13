@@ -1,2 +1,3 @@
 pn532pi
 eth-keys
+pycryptodome

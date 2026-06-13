@@ -17,6 +17,17 @@ def log(message: str) -> None:
     print(f"[pairing] {message}")
 
 
+def to_uncompressed_pubkey(pubkey_hex: str) -> str:
+    """
+    Normalize EVM public key to uncompressed format expected by mobile app:
+    0x04 + 64-byte X + 64-byte Y (total 130 bytes hex chars incl prefix marker).
+    """
+    normalized = pubkey_hex.lower().removeprefix("0x")
+    if normalized.startswith("04"):
+        return f"0x{normalized}"
+    return f"0x04{normalized}"
+
+
 def load_or_create_keypair() -> dict[str, str]:
     KEYSTORE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -28,23 +39,25 @@ def load_or_create_keypair() -> dict[str, str]:
 
         profile = {
             "private_key": private_key.to_hex(),
-            "public_key": private_key.public_key.to_hex(),
+            "public_key": to_uncompressed_pubkey(private_key.public_key.to_hex()),
             "address": private_key.public_key.to_checksum_address(),
         }
         log(f"Loaded keypair from {KEYSTORE_PATH}")
         log(f"Address: {profile['address']}")
+        log(f"Public key length: {len(profile['public_key'])} chars")
         return profile
 
     private_key_bytes = secrets.token_bytes(32)
     private_key = keys.PrivateKey(private_key_bytes)
     profile = {
         "private_key": private_key.to_hex(),
-        "public_key": private_key.public_key.to_hex(),
+        "public_key": to_uncompressed_pubkey(private_key.public_key.to_hex()),
         "address": private_key.public_key.to_checksum_address(),
     }
     KEYSTORE_PATH.write_text(json.dumps(profile, indent=2))
     log(f"Created new keypair at {KEYSTORE_PATH}")
     log(f"Address: {profile['address']}")
+    log(f"Public key length: {len(profile['public_key'])} chars")
     return profile
 
 
@@ -68,6 +81,7 @@ def read_phone_payload() -> dict | None:
         payload = read_payload()
         message = json.loads(payload.decode("utf-8"))
         log(f"Received payload type={message.get('type')} id={message.get('id')}")
+        log(f"Payload JSON: {json.dumps(message, sort_keys=True)}")
         return message
     except Exception as exc:  # noqa: BLE001 - keep script-level logging simple
         log(f"Failed to parse phone payload: {exc}")
@@ -77,14 +91,12 @@ def read_phone_payload() -> dict | None:
 def build_pair_response(request: dict, keypair: dict[str, str]) -> dict:
     if request.get("type") != "pair_request":
         return {
-            "id": request.get("id"),
             "type": "pair_error",
             "reason": f"Unsupported payload type: {request.get('type')}",
         }
 
     if request.get("chain") != "evm":
         return {
-            "id": request.get("id"),
             "type": "pair_error",
             "reason": "Only EVM pairing is supported",
         }
@@ -92,19 +104,16 @@ def build_pair_response(request: dict, keypair: dict[str, str]) -> dict:
     chain_id = request.get("chainId")
     if chain_id != SEPOLIA_CHAIN_ID:
         return {
-            "id": request.get("id"),
             "type": "pair_error",
             "reason": f"Unsupported chainId {chain_id}, expected {SEPOLIA_CHAIN_ID}",
         }
 
     return {
-        "id": request.get("id"),
         "type": "pair_response",
         "protocolVersion": 1,
         "chain": "evm",
         "chainId": SEPOLIA_CHAIN_ID,
         "address": keypair["address"],
-        "publicKey": keypair["public_key"],
     }
 
 
@@ -112,6 +121,7 @@ def send_response(payload: dict) -> bool:
     response_bytes = json.dumps(payload).encode("utf-8")
     log(f"Response payload size: {len(response_bytes)} bytes")
     log(f"Response type: {payload.get('type')}")
+    log(f"Response JSON: {json.dumps(payload, sort_keys=True)}")
 
     time.sleep(1.0)  # give user time to lift and retap
     if not wait_and_select_aid("TAP 2"):
