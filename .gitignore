@@ -18,3 +18,6 @@ mobile/android/local.properties
 # macOS
 .DS_Store
 context
+
+# Pi runtime artifacts
+pi/.lgd-nfy0
