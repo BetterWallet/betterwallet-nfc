@@ -139,7 +139,7 @@ export function ScanCardScreen({ navigation }: Props) {
       <View style={s.wrap}>
         <Text style={s.title}>Ready to Scan</Text>
         <Text style={s.subtitle}>
-          Hold your Better Card in the middle of your phone. This Android build uses two NFC taps.
+          Hold your Better Wallet in the middle of your phone.
         </Text>
 
         <View style={s.phaseCard}>

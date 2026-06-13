@@ -1,43 +1,60 @@
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { buildPairRequest, parsePairResponse } from '../services/pairing';
 import { useWallet } from '../state/wallet';
 import { useHCE } from '../useHCE';
-import type { RootStackParamList } from '../navigation/RootNavigator';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Setup'>;
 type PairPhase = 'idle' | 'tap1' | 'tap2' | 'saving';
+
+interface NetworkOption {
+  id: string;
+  label: string;
+  sublabel: string;
+}
+
+const NETWORKS: NetworkOption[] = [
+  { id: 'ethereum', label: 'Ethereum Sepolia', sublabel: 'Chain ID 11155111' },
+  { id: 'solana', label: 'Solana Devnet', sublabel: 'Cluster devnet' },
+];
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function SetupWalletScreen({ navigation }: Props) {
+export function SetupWalletScreen() {
   const { saveWallet } = useWallet();
   const { loadPayload, waitForSignedTxOnce, clearSignedTxListener } = useHCE();
   const [phase, setPhase] = useState<PairPhase>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [selectedNetwork, setSelectedNetwork] = useState<NetworkOption>(NETWORKS[0]);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const isRunningRef = useRef(false);
 
-  const phaseText = useMemo(() => {
-    if (phase === 'tap1') {
-      return 'Tap 1: send pair request to hardware wallet.';
-    }
-    if (phase === 'tap2') {
-      return 'Tap 2: receive paired wallet metadata.';
-    }
-    if (phase === 'saving') {
-      return 'Saving paired wallet to this device.';
-    }
-    return 'Pair your Better Wallet by tapping your NFC hardware wallet.';
+  const phaseLabel = useMemo(() => {
+    if (phase === 'tap1') return 'Tap 1';
+    if (phase === 'tap2') return 'Tap 2';
+    if (phase === 'saving') return 'Saving';
+    return null;
   }, [phase]);
 
+  const phaseHint = useMemo(() => {
+    if (phase === 'tap1') return 'Phone to wallet: sending pair request.';
+    if (phase === 'tap2') return 'Wallet to phone: waiting for response.';
+    if (phase === 'saving') return 'Saving wallet profile to this device.';
+    return null;
+  }, [phase]);
+
+  const isActive = phase !== 'idle';
+
   const runPairing = async () => {
-    if (isRunningRef.current) {
-      return;
-    }
+    if (isRunningRef.current) return;
     isRunningRef.current = true;
     setError(null);
     clearSignedTxListener();
@@ -54,7 +71,7 @@ export function SetupWalletScreen({ navigation }: Props) {
 
       setPhase('saving');
       await saveWallet(profile);
-      navigation.reset({ index: 0, routes: [{ name: 'Assets' }] });
+      // RootNavigator switches to the wallet stack once saveWallet updates state.
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to pair wallet over NFC.';
       setError(message);
@@ -65,34 +82,111 @@ export function SetupWalletScreen({ navigation }: Props) {
     }
   };
 
+  const selectNetwork = (option: NetworkOption) => {
+    setSelectedNetwork(option);
+    setDropdownOpen(false);
+  };
+
   return (
     <SafeAreaView style={s.root}>
       <View style={s.wrap}>
-        <Text style={s.title}>Set up Better Wallet</Text>
-        <Text style={s.subtitle}>EVM pairing only (Sepolia, chainId 11155111)</Text>
 
-        <View style={s.card}>
-          <Text style={s.cardTitle}>NFC Pairing Protocol</Text>
-          <Text style={s.cardBody}>
-            Mobile sends `pair_request` with chain `evm` and chainId `11155111`. Hardware should return
-            `pair_response` with minimal fields only: `address`, `chain`, `chainId`,
-            `protocolVersion`, `type`.
-          </Text>
+        <Text style={s.title}>Pair Hardware Wallet</Text>
+        <Text style={s.subtitle}>
+          Hold your Better Wallet near the back of your phone to pair via NFC.
+        </Text>
+
+        {/* Network dropdown trigger */}
+        <View style={s.dropdownWrap}>
+          <Text style={s.dropdownLabel}>Network</Text>
+          <Pressable
+            style={[s.dropdownTrigger, dropdownOpen && s.dropdownTriggerOpen]}
+            onPress={() => setDropdownOpen((v) => !v)}
+          >
+            <View style={s.dropdownTriggerLeft}>
+              <Text style={s.dropdownTriggerNetwork}>{selectedNetwork.label}</Text>
+              <Text style={s.dropdownTriggerSub}>{selectedNetwork.sublabel}</Text>
+            </View>
+            <Text style={[s.dropdownChevron, dropdownOpen && s.dropdownChevronUp]}>›</Text>
+          </Pressable>
+
+          {/* Inline dropdown menu */}
+          {dropdownOpen && (
+            <>
+              <Pressable style={s.dropdownBackdrop} onPress={() => setDropdownOpen(false)} />
+              <View style={s.dropdownMenu}>
+                {NETWORKS.map((option, index) => (
+                  <Pressable
+                    key={option.id}
+                    style={[
+                      s.dropdownOption,
+                      index < NETWORKS.length - 1 && s.dropdownOptionBorder,
+                    ]}
+                    onPress={() => selectNetwork(option)}
+                  >
+                    <View style={s.dropdownOptionLeft}>
+                      <Text style={s.dropdownOptionLabel}>{option.label}</Text>
+                      <Text style={s.dropdownOptionSub}>{option.sublabel}</Text>
+                    </View>
+                    {selectedNetwork.id === option.id && (
+                      <Text style={s.dropdownCheck}>✓</Text>
+                    )}
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          )}
         </View>
 
-        <View style={s.statusCard}>
-          <Text style={s.statusLabel}>Status</Text>
-          <Text style={s.statusText}>{phaseText}</Text>
-          {phase !== 'idle' ? <ActivityIndicator color="#c8f323" style={s.spinner} /> : null}
-        </View>
+        {!isActive && (
+          <View style={s.stepsCard}>
+            <View style={s.step}>
+              <View style={s.stepIconWrap}>
+                <Text style={s.stepIcon}>◎</Text>
+              </View>
+              <View style={s.stepText}>
+                <Text style={s.stepTitle}>Tap your hardware wallet</Text>
+                <Text style={s.stepHint}>Bring your Better Card to the back of your phone.</Text>
+              </View>
+            </View>
+            <View style={s.stepDivider} />
+            <View style={s.step}>
+              <View style={s.stepIconWrap}>
+                <Text style={s.stepIcon}>✓</Text>
+              </View>
+              <View style={s.stepText}>
+                <Text style={s.stepTitle}>Confirm on device</Text>
+                <Text style={s.stepHint}>Tap a second time to receive the signed response.</Text>
+              </View>
+            </View>
+          </View>
+        )}
 
-        {error ? <Text style={s.error}>{error}</Text> : null}
+        {isActive && (
+          <View style={s.phaseCard}>
+            <Text style={s.phase}>{phaseLabel}</Text>
+            <Text style={s.phaseHint}>{phaseHint}</Text>
+            <ActivityIndicator color="#c8f323" size="large" style={s.spinner} />
+          </View>
+        )}
+
+        {error ? (
+          <View style={s.errorCard}>
+            <Text style={s.errorTitle}>Pairing failed</Text>
+            <Text style={s.errorBody}>{error}</Text>
+          </View>
+        ) : null}
 
         <View style={s.footer}>
-          <Pressable style={s.primary} onPress={runPairing}>
-            <Text style={s.primaryText}>{phase === 'idle' ? 'Pair Hardware Wallet' : 'Retry Pairing'}</Text>
-          </Pressable>
+          {!isActive && (
+            <Pressable style={s.primaryButton} onPress={runPairing}>
+              <Text style={s.primaryButtonText}>
+                {error ? 'Retry Pairing' : 'Pair Hardware Wallet'}
+              </Text>
+            </Pressable>
+          )}
         </View>
+
       </View>
     </SafeAreaView>
   );
@@ -106,81 +200,225 @@ const s = StyleSheet.create({
   wrap: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 30,
+    paddingTop: 36,
   },
   title: {
-    color: '#f0f0f0',
-    fontSize: 34,
+    color: '#e5e2e1',
+    fontSize: 30,
     fontWeight: '700',
   },
   subtitle: {
-    color: '#9d9d9d',
-    marginTop: 8,
-    fontSize: 14,
+    marginTop: 10,
+    color: '#a8a8a8',
+    fontSize: 16,
+    lineHeight: 24,
   },
-  card: {
-    marginTop: 22,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#2f2f2f',
+
+  // Dropdown
+  dropdownWrap: {
+    marginTop: 24,
+    zIndex: 10,
+  },
+  dropdownLabel: {
+    color: '#9a9a9a',
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  dropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: '#1a1a1a',
-    padding: 16,
-    gap: 8,
+    borderWidth: 1,
+    borderColor: '#2d2d2d',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
   },
-  cardTitle: {
+  dropdownTriggerOpen: {
+    borderColor: '#c8f323',
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  dropdownTriggerLeft: {
+    gap: 2,
+  },
+  dropdownTriggerNetwork: {
+    color: '#e5e2e1',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  dropdownTriggerSub: {
+    color: '#9a9a9a',
+    fontSize: 12,
+  },
+  dropdownChevron: {
+    color: '#9a9a9a',
+    fontSize: 20,
+    transform: [{ rotate: '90deg' }],
+    lineHeight: 22,
+  },
+  dropdownChevronUp: {
+    transform: [{ rotate: '-90deg' }],
+    color: '#c8f323',
+  },
+  dropdownBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: -24,
+    right: -24,
+    bottom: -2000,
+    zIndex: 9,
+  },
+  dropdownMenu: {
+    backgroundColor: '#1c1c1c',
+    borderWidth: 1,
+    borderTopWidth: 0,
+    borderColor: '#c8f323',
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
+    overflow: 'hidden',
+    zIndex: 10,
+  },
+  dropdownOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+  },
+  dropdownOptionBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#2d2d2d',
+  },
+  dropdownOptionLeft: {
+    gap: 2,
+  },
+  dropdownOptionLabel: {
+    color: '#e5e2e1',
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  dropdownOptionSub: {
+    color: '#9a9a9a',
+    fontSize: 12,
+  },
+  dropdownCheck: {
     color: '#c8f323',
     fontSize: 16,
     fontWeight: '700',
   },
-  cardBody: {
-    color: '#d0d0d0',
-    fontSize: 14,
-    lineHeight: 21,
-  },
-  statusCard: {
-    marginTop: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#2f2f2f',
+
+  // Steps
+  stepsCard: {
+    marginTop: 24,
     backgroundColor: '#1a1a1a',
-    padding: 16,
+    borderWidth: 1,
+    borderColor: '#2d2d2d',
+    borderRadius: 18,
+    padding: 20,
   },
-  statusLabel: {
-    color: '#9d9d9d',
-    textTransform: 'uppercase',
-    letterSpacing: 1.1,
-    fontSize: 11,
+  step: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 14,
   },
-  statusText: {
-    color: '#f0f0f0',
+  stepIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(200,243,35,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  stepIcon: {
+    color: '#c8f323',
+    fontSize: 16,
+  },
+  stepText: {
+    flex: 1,
+  },
+  stepTitle: {
+    color: '#e5e2e1',
     fontSize: 15,
-    marginTop: 8,
+    fontWeight: '600',
+  },
+  stepHint: {
+    marginTop: 3,
+    color: '#9a9a9a',
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  stepDivider: {
+    height: 1,
+    backgroundColor: '#2d2d2d',
+    marginVertical: 16,
+  },
+
+  // Phase card
+  phaseCard: {
+    marginTop: 24,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#2d2d2d',
+    borderRadius: 18,
+    padding: 20,
+  },
+  phase: {
+    color: '#c8f323',
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  phaseHint: {
+    marginTop: 12,
+    color: '#d4d4d4',
+    fontSize: 15,
     lineHeight: 22,
   },
   spinner: {
-    marginTop: 12,
-    alignSelf: 'flex-start',
+    marginTop: 18,
   },
-  error: {
-    marginTop: 14,
+
+  // Error
+  errorCard: {
+    marginTop: 20,
+    backgroundColor: '#2a1717',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#5a2a2a',
+    padding: 14,
+    gap: 8,
+  },
+  errorTitle: {
     color: '#ffb4ab',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  errorBody: {
+    color: '#ffd8d3',
     fontSize: 14,
     lineHeight: 20,
   },
+
+  // Footer
   footer: {
     marginTop: 'auto',
-    paddingBottom: 30,
+    paddingBottom: 26,
   },
-  primary: {
+  primaryButton: {
     backgroundColor: '#c8f323',
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 16,
   },
-  primaryText: {
+  primaryButtonText: {
     color: '#1a2400',
-    fontSize: 17,
     fontWeight: '700',
+    fontSize: 16,
   },
 });

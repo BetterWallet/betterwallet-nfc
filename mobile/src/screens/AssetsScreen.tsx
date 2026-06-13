@@ -28,7 +28,7 @@ export function AssetsScreen({ navigation }: Props) {
       <SafeAreaView style={s.root}>
         <View style={s.emptyWrap}>
           <Text style={s.emptyText}>No paired wallet profile found.</Text>
-          <Pressable style={s.primaryAction} onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Setup' }] })}>
+          <Pressable style={s.primaryAction} onPress={() => void clearWallet()}>
             <Text style={s.primaryActionText}>Go to Setup</Text>
           </Pressable>
         </View>
@@ -43,25 +43,17 @@ export function AssetsScreen({ navigation }: Props) {
           <Pressable style={s.iconButton}>
             <Text style={s.icon}>☰</Text>
           </Pressable>
-          <View style={s.walletPill}>
-            <Text style={s.walletPillText}>
-              {wallet.address.slice(0, 6)}...{wallet.address.slice(-4)}
-            </Text>
+          <View style={s.topBarCenter}>
+            <View style={s.walletPill}>
+              <Text style={s.walletPillText}>
+                {wallet.address.slice(0, 6)}...{wallet.address.slice(-4)}
+              </Text>
+            </View>
+            <Text style={s.networkBadge}>{wallet.networkName}</Text>
           </View>
           <Pressable style={s.iconButton}>
             <Text style={s.icon}>⚙</Text>
           </Pressable>
-        </View>
-
-        <View style={s.identityCard}>
-          <Text style={s.identityLabel}>Network</Text>
-          <Text style={s.identityValue}>{wallet.networkName} (chainId {wallet.chainId})</Text>
-          <Text style={[s.identityLabel, s.identityLabelTop]}>Wallet Address</Text>
-          <Text style={s.identityMono}>{wallet.address}</Text>
-          <Text style={[s.identityLabel, s.identityLabelTop]}>Public Key</Text>
-          <Text style={s.identityMono} numberOfLines={2}>
-            {wallet.publicKey ?? 'Not provided in minimal pairing response'}
-          </Text>
         </View>
 
         <View style={s.balanceHero}>
@@ -152,6 +144,10 @@ const s = StyleSheet.create({
     color: '#c9c9c9',
     fontSize: 18,
   },
+  topBarCenter: {
+    alignItems: 'center',
+    gap: 4,
+  },
   walletPill: {
     backgroundColor: '#1c1b1b',
     borderRadius: 999,
@@ -164,6 +160,12 @@ const s = StyleSheet.create({
     color: '#f5f5f5',
     fontSize: 13,
     fontWeight: '600',
+  },
+  networkBadge: {
+    color: '#c8f323',
+    fontSize: 11,
+    fontWeight: '600',
+    opacity: 0.9,
   },
   balanceHero: {
     marginTop: 30,
@@ -319,34 +321,6 @@ const s = StyleSheet.create({
     color: '#868686',
     fontSize: 12,
     fontWeight: '600',
-  },
-  identityCard: {
-    marginTop: 20,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-    backgroundColor: '#1a1a1a',
-    padding: 14,
-  },
-  identityLabel: {
-    color: '#9d9d9d',
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  identityLabelTop: {
-    marginTop: 12,
-  },
-  identityValue: {
-    color: '#f2f2f2',
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 5,
-  },
-  identityMono: {
-    color: '#dcdcdc',
-    fontSize: 12,
-    marginTop: 6,
   },
   emptyWrap: {
     flex: 1,
