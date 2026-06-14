@@ -19,6 +19,7 @@ import { getPortfolio } from '../services/portfolio';
 import { useSendFlow } from '../state/sendFlow';
 import { useWallet } from '../state/wallet';
 import { NETWORK_OPTIONS, useNetwork } from '../state/network';
+import { NetworkLogo } from '../components/NetworkLogo';
 import type { PortfolioAsset, PortfolioSnapshot } from '../types/portfolio';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Assets'>;
@@ -178,7 +179,7 @@ export function AssetsScreen({ navigation }: Props) {
         <View style={s.topBar}>
           <View style={s.iconButton} />
           <Pressable style={s.networkPill} onPress={() => setShowNetworkModal(true)}>
-            <View style={[s.networkDot, { backgroundColor: networkOption.color }]} />
+            <NetworkLogo network={networkOption.key} size={20} />
             <Text style={s.networkPillText}>{networkOption.label}</Text>
             <Text style={s.networkChevron}>▾</Text>
           </Pressable>
@@ -284,7 +285,7 @@ export function AssetsScreen({ navigation }: Props) {
                     setShowNetworkModal(false);
                   }}
                 >
-                  <View style={[s.networkOptionDot, { backgroundColor: option.color }]} />
+                  <NetworkLogo network={option.key} size={36} />
                   <Text style={[s.networkOptionText, isSelected && s.networkOptionTextSelected]}>
                     {option.label}
                   </Text>
@@ -360,11 +361,6 @@ const s = StyleSheet.create({
     borderColor: '#272727',
     paddingHorizontal: 14,
     paddingVertical: 8,
-  },
-  networkDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
   },
   networkPillText: {
     color: '#f5f5f5',
@@ -619,11 +615,6 @@ const s = StyleSheet.create({
   },
   networkOptionSelected: {
     backgroundColor: 'rgba(200,243,35,0.08)',
-  },
-  networkOptionDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
   },
   networkOptionText: {
     flex: 1,

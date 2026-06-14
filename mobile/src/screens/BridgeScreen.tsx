@@ -4,6 +4,7 @@ import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,55 +15,13 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { NetworkLogo } from '../components/NetworkLogo';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { estimateCcipFee, formatAvaxFee } from '../services/ccip';
 import { useBridgeFlow } from '../state/bridgeFlow';
 import { useWallet } from '../state/wallet';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Bridge'>;
-
-function AvalancheLogo({ size = 28 }: { size?: number }) {
-  return (
-    <View
-      style={[
-        logo.wrap,
-        { width: size, height: size, borderRadius: size / 2 },
-      ]}
-    >
-      <Text style={[logo.letter, { fontSize: size * 0.45 }]}>A</Text>
-    </View>
-  );
-}
-
-function EthereumLogo({ size = 28 }: { size?: number }) {
-  return (
-    <View
-      style={[
-        logo.ethWrap,
-        { width: size, height: size, borderRadius: size / 2 },
-      ]}
-    >
-      <Text style={[logo.letter, { fontSize: size * 0.45 }]}>Ξ</Text>
-    </View>
-  );
-}
-
-const logo = StyleSheet.create({
-  wrap: {
-    backgroundColor: '#E84142',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ethWrap: {
-    backgroundColor: '#627EEA',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  letter: {
-    color: '#fff',
-    fontWeight: '800',
-  },
-});
 
 export function BridgeScreen({ navigation }: Props) {
   const { state, setAmount, setReceiver, setFee, setStage, reset } = useBridgeFlow();
@@ -160,7 +119,7 @@ export function BridgeScreen({ navigation }: Props) {
           {/* Route card */}
           <View style={s.routeCard}>
             <View style={s.chainPill}>
-              <AvalancheLogo size={26} />
+              <NetworkLogo network="avax-fuji" size={26} />
               <View>
                 <Text style={s.chainPillLabel}>FROM</Text>
                 <Text style={s.chainPillName}>Avalanche Fuji</Text>
@@ -172,17 +131,12 @@ export function BridgeScreen({ navigation }: Props) {
             </View>
 
             <View style={s.chainPill}>
-              <EthereumLogo size={26} />
+              <NetworkLogo network="eth-sepolia" size={26} />
               <View>
                 <Text style={s.chainPillLabel}>TO</Text>
                 <Text style={s.chainPillName}>Ethereum Sepolia</Text>
               </View>
             </View>
-          </View>
-
-          {/* CCIP badge */}
-          <View style={s.ccipBadge}>
-            <Text style={s.ccipBadgeText}>⛓ Powered by Chainlink CCIP</Text>
           </View>
 
           {/* Amount input */}
@@ -261,6 +215,14 @@ export function BridgeScreen({ navigation }: Props) {
           >
             <Text style={s.ctaText}>Preview Transfer</Text>
           </Pressable>
+          <View style={s.ccipBadge}>
+            <Image
+              source={require('../../assets/logos/chainlink.png')}
+              style={s.ccipLogo}
+              resizeMode="contain"
+            />
+            <Text style={s.ccipBadgeText}>Powered by Chainlink CCIP</Text>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -318,14 +280,22 @@ const s = StyleSheet.create({
   },
 
   ccipBadge: {
-    marginTop: 10,
+    marginTop: 14,
     alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: '#2a3d10',
     backgroundColor: 'rgba(200,243,35,0.07)',
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 7,
+  },
+  ccipLogo: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
   },
   ccipBadgeText: {
     color: '#c8f323',
