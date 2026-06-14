@@ -569,10 +569,11 @@ class NfcWalletService:
         raw = base64.b64decode(str(request["tx"]))
         unsigned_tx = json.loads(raw.decode("utf-8"))
         nonce = parse_int(unsigned_tx.get("nonce"), "nonce")
+        chain_id = parse_int(unsigned_tx.get("chainId", SEPOLIA_CHAIN_ID), "chainId")
 
         tx_dict: dict[str, Any] = {
             "type": 2,
-            "chainId": SEPOLIA_CHAIN_ID,
+            "chainId": chain_id,
             "nonce": nonce,
             "to": unsigned_tx["to"],
             "value": parse_int(unsigned_tx["valueWei"], "valueWei"),
@@ -591,12 +592,13 @@ class NfcWalletService:
         raw_hex = signed.raw_transaction.hex()
         signature = raw_hex if raw_hex.startswith("0x") else f"0x{raw_hex}"
         log(f"Sign request id: {request['id']}")
+        log(f"Chain ID: {chain_id}")
         # log(f"Signed raw tx: {signature}")
         return {
             "id": request["id"],
             "type": "signed_tx",
             "chain": "evm",
-            "chainId": SEPOLIA_CHAIN_ID,
+            "chainId": chain_id,
             "signature": signature,
         }
 
