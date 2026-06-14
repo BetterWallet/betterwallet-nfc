@@ -10,6 +10,7 @@ import {
   buildApprovalTx,
   buildBridgeSignRequest,
   buildCcipSendTx,
+  getCcipExplorerUrl,
   getNonce,
 } from '../services/ccip';
 import { describeNfcError } from '../services/nfcError';
@@ -64,65 +65,120 @@ export function BridgeScanScreen({ navigation }: Props) {
     startedRef.current = true;
     let cancelled = false;
 
+    const log = (...args: unknown[]) => {
+      if (__DEV__) console.log('[BridgeScan]', ...args);
+    };
+
     const runFlow = async () => {
       const signerAddress = wallet.address;
       const avaxFeeWei = state.avaxFeeWei!;
 
+      log('▶ runFlow started', { signerAddress, amountUsdc: state.amountUsdc, receiver: state.receiver });
+
       try {
         // ── Step 1: Approve USDC ────────────────────────────────────────────
         setStage('nfc_approve');
+        log('── Step 1: Approve USDC');
 
         const nonce1 = await getNonce(signerAddress);
+        log('nonce fetched:', nonce1);
+
         const approveId = `bridge-approve-${Date.now()}`;
         const approveTx = buildApprovalTx();
+        log('approval tx built:', {
+          id: approveId,
+          to: approveTx.to,
+          gasLimit: approveTx.gasLimit,
+          maxFeePerGasWei: approveTx.maxFeePerGasWei,
+          dataPrefix: approveTx.data?.slice(0, 10) ?? '(none)',
+          chainId: approveTx.chainId,
+        });
+
         const approveSignRequest = buildBridgeSignRequest(approveId, approveTx, signerAddress, nonce1);
-
-        const approveSignedPromise = waitForSignedTxOnce(45000);
+        log('sign request built for approval, loading into HCE…', { id: approveSignRequest.id });
         loadPayload(approveSignRequest);
-        const approveSignedJson = await approveSignedPromise;
 
-        if (cancelled) return;
+        log('waiting for NFC tap (approval, timeout=45s)…');
+        const approveSignedPromise = waitForSignedTxOnce(45000);
+        const approveSignedJson = await approveSignedPromise;
+        log('signed JSON received (approval):', {
+          length: approveSignedJson.length,
+          preview: approveSignedJson.slice(0, 120),
+        });
+
+        if (cancelled) { log('cancelled after approval sign'); return; }
 
         const approveSigned = parseSignedTxMessage(approveSignedJson);
+        log('parsed approval:', { id: approveSigned.id, sigPrefix: approveSigned.signature.slice(0, 20) });
+
         if (approveSigned.id !== approveId) {
+          log('ID mismatch — expected:', approveId, 'got:', approveSigned.id);
           throw new Error('Approval signature ID mismatch. Please retry.');
         }
 
         setStage('broadcasting_approve');
+        log('broadcasting approval tx to Fuji…');
         const approveTxHash = await broadcastOnFuji(approveSigned.signature);
-        if (cancelled) return;
+        log('approval tx confirmed:', approveTxHash);
 
+        if (cancelled) { log('cancelled after approval broadcast'); return; }
         setApproveHash(approveTxHash);
         resetTransferState();
 
         // ── Step 2: ccipSend ────────────────────────────────────────────────
         setStage('nfc_send');
+        log('── Step 2: CCIP Send');
 
         const nonce2 = nonce1 + 1;
+        log('using nonce for ccipSend:', nonce2);
+
         const ccipId = `bridge-ccip-${Date.now()}`;
         const ccipTx = buildCcipSendTx(state.receiver, state.amountUsdc, avaxFeeWei);
+        log('ccipSend tx built:', {
+          id: ccipId,
+          to: ccipTx.to,
+          valueWei: ccipTx.valueWei,
+          gasLimit: ccipTx.gasLimit,
+          dataPrefix: ccipTx.data?.slice(0, 10) ?? '(none)',
+          chainId: ccipTx.chainId,
+        });
+
         const ccipSignRequest = buildBridgeSignRequest(ccipId, ccipTx, signerAddress, nonce2);
-
-        const ccipSignedPromise = waitForSignedTxOnce(45000);
+        log('sign request built for ccipSend, loading into HCE…', { id: ccipSignRequest.id });
         loadPayload(ccipSignRequest);
-        const ccipSignedJson = await ccipSignedPromise;
 
-        if (cancelled) return;
+        log('waiting for NFC tap (ccipSend, timeout=45s)…');
+        const ccipSignedPromise = waitForSignedTxOnce(45000);
+        const ccipSignedJson = await ccipSignedPromise;
+        log('signed JSON received (ccipSend):', {
+          length: ccipSignedJson.length,
+          preview: ccipSignedJson.slice(0, 120),
+        });
+
+        if (cancelled) { log('cancelled after ccipSend sign'); return; }
 
         const ccipSigned = parseSignedTxMessage(ccipSignedJson);
+        log('parsed ccipSend:', { id: ccipSigned.id, sigPrefix: ccipSigned.signature.slice(0, 20) });
+
         if (ccipSigned.id !== ccipId) {
+          log('ID mismatch — expected:', ccipId, 'got:', ccipSigned.id);
           throw new Error('CCIP send signature ID mismatch. Please retry.');
         }
 
         setStage('broadcasting_send');
+        log('broadcasting ccipSend tx to Fuji…');
         const { txHash, messageId } = await broadcastCcipSendOnFuji(ccipSigned.signature);
-        if (cancelled) return;
+        log('ccipSend confirmed:', { txHash, messageId });
+
+        if (cancelled) { log('cancelled after ccipSend broadcast'); return; }
 
         setCcipResult({ ccipTxHash: txHash, messageId });
+        log('▶ runFlow complete — CCIP explorer:', getCcipExplorerUrl(messageId));
         navigation.replace('BridgeSuccess');
       } catch (err) {
         if (cancelled) return;
         const message = err instanceof Error ? err.message : 'Bridge failed unexpectedly.';
+        log('✗ runFlow error:', message, err);
         setLocalError(message);
         setError(message);
       }

@@ -3,6 +3,7 @@ import {
   AbiCoder,
   Contract,
   formatUnits,
+  id,
   Interface,
   JsonRpcProvider,
   MaxUint256,
@@ -13,8 +14,18 @@ import type { SignRequestMessage, UnsignedTxPayload } from '../types/send';
 
 // ─── Chain config ─────────────────────────────────────────────────────────────
 
-export const AVAX_FUJI_RPC = 'https://api.avax-test.network/ext/bc/C/rpc';
+export const AVAX_FUJI_RPC =
+  process.env.EXPO_PUBLIC_AVAX_FUJI_RPC ??
+  'https://avax-fuji.g.alchemy.com/v2/N1PkpdotMYFn-PrNDpxSeAFtEFWzu_Gd';
 export const FUJI_CHAIN_ID = 43113;
+
+const CCIP_SEND_REQUESTED_TOPIC = id(
+  'CCIPSendRequested((uint64,address,uint64,uint256,uint256,address,(address,uint256)[],address,bytes32))',
+);
+
+export function getCcipExplorerUrl(messageId: string): string {
+  return `https://ccip.chain.link/msg/${messageId}`;
+}
 const ETH_SEPOLIA_CHAIN_SELECTOR = 16015286601757825753n;
 
 // Avalanche Fuji contract addresses
@@ -150,12 +161,15 @@ export async function broadcastCcipSendOnFuji(
   const response = await provider.broadcastTransaction(signedHex);
   const receipt = await response.wait();
 
-  let messageId = response.hash;
+  let messageId: string | undefined;
   for (const log of receipt?.logs ?? []) {
-    if (log.topics[1]) {
-      messageId = log.topics[1];
-      break;
-    }
+    if (log.topics[0] !== CCIP_SEND_REQUESTED_TOPIC || !log.topics[1]) continue;
+    messageId = log.topics[1];
+    break;
+  }
+
+  if (!messageId) {
+    throw new Error('CCIP message submitted but messageId could not be parsed from receipt logs.');
   }
 
   return { txHash: response.hash, messageId };

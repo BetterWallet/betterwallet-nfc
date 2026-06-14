@@ -3,6 +3,7 @@ import React from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { getCcipExplorerUrl } from '../services/ccip';
 import { useBridgeFlow } from '../state/bridgeFlow';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BridgeSuccess'>;
@@ -10,13 +11,14 @@ type Props = NativeStackScreenProps<RootStackParamList, 'BridgeSuccess'>;
 export function BridgeSuccessScreen({ navigation }: Props) {
   const { state, reset } = useBridgeFlow();
 
+  const ccipExplorerUrl = state.messageId ? getCcipExplorerUrl(state.messageId) : null;
   const shortMessageId = state.messageId
     ? `${state.messageId.slice(0, 12)}…${state.messageId.slice(-8)}`
     : '—';
 
   const handleTrack = () => {
-    if (!state.messageId) return;
-    void Linking.openURL(`https://ccip.chain.link/msg/${state.messageId}`);
+    if (!ccipExplorerUrl) return;
+    void Linking.openURL(ccipExplorerUrl);
   };
 
   const handleDone = () => {
@@ -74,8 +76,17 @@ export function BridgeSuccessScreen({ navigation }: Props) {
           </Text>
         </View>
 
+        {ccipExplorerUrl ? (
+          <Pressable style={s.linkCard} onPress={handleTrack}>
+            <Text style={s.linkLabel}>CCIP Explorer</Text>
+            <Text style={s.linkUrl} numberOfLines={2}>
+              {ccipExplorerUrl}
+            </Text>
+          </Pressable>
+        ) : null}
+
         <View style={s.footer}>
-          <Pressable style={s.trackButton} onPress={handleTrack}>
+          <Pressable style={s.trackButton} onPress={handleTrack} disabled={!ccipExplorerUrl}>
             <Text style={s.trackButtonText}>Track on CCIP Explorer ↗</Text>
           </Pressable>
           <Pressable style={s.doneButton} onPress={handleDone}>
@@ -152,6 +163,18 @@ const s = StyleSheet.create({
     padding: 14,
   },
   timeText: { color: '#c8f323', fontSize: 13, lineHeight: 20, fontWeight: '600' },
+
+  linkCard: {
+    marginTop: 14,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    padding: 14,
+    gap: 6,
+  },
+  linkLabel: { color: '#9a9a9a', fontSize: 12, fontWeight: '600', letterSpacing: 0.8 },
+  linkUrl: { color: '#c8f323', fontSize: 12, lineHeight: 18, fontWeight: '600' },
 
   footer: {
     marginTop: 'auto',

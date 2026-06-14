@@ -27,6 +27,10 @@ interface NativeTransferProgressPayload {
   totalBytes?: number | null;
 }
 
+const hceLog = (...args: unknown[]) => {
+  if (__DEV__) console.log('[HCE]', ...args);
+};
+
 export function useHCE() {
   const listenerRef = useRef<ReturnType<typeof DeviceEventEmitter.addListener> | null>(null);
   const sessionListenerRef = useRef<ReturnType<typeof DeviceEventEmitter.addListener> | null>(null);
@@ -53,8 +57,10 @@ export function useHCE() {
   }, []);
 
   const loadPayload = useCallback((payload: object) => {
+    const serialised = JSON.stringify(payload);
+    hceLog('loadPayload — bytes:', serialised.length, 'preview:', serialised.slice(0, 80));
     startTransferState();
-    HCEModule.setPayload(JSON.stringify(payload));
+    HCEModule.setPayload(serialised);
   }, [startTransferState]);
 
   const applyTransferProgress = useCallback((payload: NativeTransferProgressPayload) => {
@@ -89,6 +95,7 @@ export function useHCE() {
   }, []);
 
   const onSignedPayload = useCallback(() => {
+    hceLog('HCE_SIGNED_TX received — marking complete');
     awaitingSignedPayloadRef.current = false;
     setTransferPhase('complete');
     setTransferProgress((current) => {
@@ -100,8 +107,10 @@ export function useHCE() {
   }, []);
 
   const waitForSignedPayload = useCallback((callback: SignedPayloadCallback) => {
+    hceLog('registering HCE_SIGNED_TX listener');
     listenerRef.current?.remove();
     listenerRef.current = DeviceEventEmitter.addListener('HCE_SIGNED_TX', (json: string) => {
+      hceLog('HCE_SIGNED_TX fired — payload length:', json.length);
       listenerRef.current?.remove();
       onSignedPayload();
       callback(json);
@@ -116,7 +125,9 @@ export function useHCE() {
   const waitForSignedPayloadOnce = useCallback(
     (timeoutMs = 30000, timeoutMessage = 'Timed out waiting for signed payload over NFC.'): Promise<string> => {
     return new Promise((resolve, reject) => {
+      hceLog(`waitForSignedPayloadOnce — timeout=${timeoutMs}ms`);
       const timeout = setTimeout(() => {
+        hceLog('✗ NFC wait timed out after', timeoutMs, 'ms');
         awaitingSignedPayloadRef.current = false;
         clearSignedTxListener();
         reject(new Error(timeoutMessage));
@@ -149,7 +160,9 @@ export function useHCE() {
     sessionListenerRef.current = DeviceEventEmitter.addListener(
       'HCE_NFC_SESSION',
       (rawState: HceSessionState) => {
+        hceLog('HCE_NFC_SESSION:', rawState, '— awaiting:', awaitingSignedPayloadRef.current, 'activations:', activationCountRef.current);
         if (rawState !== 'active' && rawState !== 'idle') {
+          hceLog('unexpected session state value:', rawState);
           return;
         }
         setSessionState(rawState);
@@ -160,6 +173,7 @@ export function useHCE() {
 
         if (rawState === 'active') {
           activationCountRef.current += 1;
+          hceLog('tap #' + activationCountRef.current, '→', activationCountRef.current <= 1 ? 'transferring_to_wallet' : 'transferring_from_wallet');
           if (activationCountRef.current <= 1) {
             setTransferPhase('transferring_to_wallet');
           } else {
@@ -169,6 +183,7 @@ export function useHCE() {
         }
 
         if (activationCountRef.current === 1) {
+          hceLog('first tap ended — entering waiting_for_rescan');
           setTransferPhase('waiting_for_rescan');
         }
       },
@@ -180,13 +195,15 @@ export function useHCE() {
         if (typeof payload === 'string') {
           try {
             const parsed = JSON.parse(payload) as NativeTransferProgressPayload;
+            hceLog('HCE_TRANSFER_PROGRESS (string):', parsed.direction, parsed.bytesTransferred, '/', parsed.totalBytes ?? '?');
             applyTransferProgress(parsed);
           } catch {
-            // Ignore malformed progress events.
+            hceLog('HCE_TRANSFER_PROGRESS — failed to parse string payload:', payload);
           }
           return;
         }
 
+        hceLog('HCE_TRANSFER_PROGRESS (object):', payload.direction, payload.bytesTransferred, '/', payload.totalBytes ?? '?');
         applyTransferProgress(payload);
       },
     );
