@@ -92,7 +92,7 @@ def decode_unsigned_tx(sign_request: dict) -> dict:
 
 def sign_request_payload(sign_request: dict, keypair: dict[str, str]) -> str:
     unsigned_tx = decode_unsigned_tx(sign_request)
-    log(f"Decoded unsigned tx JSON: {json.dumps(unsigned_tx, sort_keys=True)}")
+    # log(f"Decoded unsigned tx JSON: {json.dumps(unsigned_tx, sort_keys=True)}")
 
     signer_address = keypair["address"]
     from_address = unsigned_tx.get("from")

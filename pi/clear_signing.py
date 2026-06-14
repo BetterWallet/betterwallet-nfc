@@ -102,7 +102,7 @@ def display_clear_signing_review(unsigned_tx: dict, keypair: dict[str, str]) -> 
     log(f"Gas limit: {gas_limit}")
     log(f"Max fee per gas: {max_fee / 1e9:.9f} gwei")
     log(f"Max priority fee per gas: {max_priority_fee / 1e9:.9f} gwei")
-    log(f"Unsigned tx JSON: {json.dumps(unsigned_tx, sort_keys=True)}")
+    # log(f"Unsigned tx JSON: {json.dumps(unsigned_tx, sort_keys=True)}")
 
     digest = calldata_digest_hex(calldata_hex)
     log(f"ERC-8213 calldata digest: {digest}")
@@ -179,7 +179,7 @@ def sign_request_payload(sign_request: dict, keypair: dict[str, str]) -> str | N
     signed_raw_tx = raw_hex if raw_hex.startswith("0x") else f"0x{raw_hex}"
 
     log(f"Sign request id: {sign_request['id']}")
-    log(f"Signed raw tx: {signed_raw_tx}")
+    # log(f"Signed raw tx: {signed_raw_tx}")
     return signed_raw_tx
 
 

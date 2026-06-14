@@ -7,6 +7,7 @@ import hashlib
 import json
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from eth_account import Account
@@ -31,6 +32,7 @@ STATUS_STOPPED = "stopped"
 STATUS_READY = "ready"
 STATUS_ERROR = "error"
 _registry = None
+LOCAL_ERC7730_REGISTRY_ROOT = Path(__file__).resolve().parent / "erc7730_registry"
 
 
 def is_retryable_nfc_error_message(message: str) -> bool:
@@ -101,12 +103,36 @@ def ensure_registry():
         return None
     if _registry is not None:
         return _registry
+    base_registry = None
     try:
-        _registry = Registry.load()
+        base_registry = Registry.load()
     except Exception:
         # Runtime must stay offline. Registry should be pre-downloaded during setup.
         log("ERC-7730 registry not found locally. Offline mode: skipping network download.")
-        _registry = None
+
+    overlay_registry = None
+    overlay_root = LOCAL_ERC7730_REGISTRY_ROOT
+    if (overlay_root / "registry").exists():
+        try:
+            overlay_registry = Registry.from_path(overlay_root)
+            log(f"Loaded local ERC-7730 overlay registry from {overlay_root}")
+        except Exception as exc:  # noqa: BLE001
+            log(f"Failed to load local ERC-7730 overlay registry: {type(exc).__name__}: {exc}")
+
+    if base_registry is None:
+        _registry = overlay_registry
+        return _registry
+    if overlay_registry is None:
+        _registry = base_registry
+        return _registry
+
+    for deployment_key, formats in overlay_registry.by_deployment.items():
+        existing = base_registry.by_deployment.get(deployment_key, [])
+        base_registry.by_deployment[deployment_key] = [*formats, *existing]
+    for selector, formats in overlay_registry.by_selector.items():
+        existing = base_registry.by_selector.get(selector, [])
+        base_registry.by_selector[selector] = [*formats, *existing]
+    _registry = base_registry
     return _registry
 
 
@@ -324,7 +350,7 @@ class NfcWalletService:
         log(f"Gas limit: {gas_limit}")
         log(f"Max fee per gas: {max_fee / 1e9:.9f} gwei")
         log(f"Max priority fee per gas: {max_priority_fee / 1e9:.9f} gwei")
-        log(f"Unsigned tx JSON: {json.dumps(unsigned_tx, sort_keys=True)}")
+        # log(f"Unsigned tx JSON: {json.dumps(unsigned_tx, sort_keys=True)}")
 
         digest: str
         if calldata_digest_hex is not None:
@@ -475,7 +501,7 @@ class NfcWalletService:
         raw_hex = signed.raw_transaction.hex()
         signature = raw_hex if raw_hex.startswith("0x") else f"0x{raw_hex}"
         log(f"Sign request id: {request['id']}")
-        log(f"Signed raw tx: {signature}")
+        # log(f"Signed raw tx: {signature}")
         return {
             "id": request["id"],
             "type": "signed_tx",

@@ -1,0 +1,46 @@
+{
+  "$schema": "../../specs/erc7730-v2.schema.json",
+  "context": {
+    "$id": "Uniswap Universal Router Sepolia",
+    "contract": {
+      "deployments": [
+        {
+          "chainId": 11155111,
+          "address": "0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b"
+        }
+      ]
+    }
+  },
+  "metadata": {
+    "owner": "Uniswap Labs",
+    "info": {
+      "url": "https://uniswap.org/"
+    },
+    "contractName": "Universal Router"
+  },
+  "display": {
+    "formats": {
+      "execute(bytes commands,bytes[] inputs,uint256 deadline)": {
+        "$id": "execute",
+        "intent": "Swap",
+        "fields": [
+          {
+            "path": "commands",
+            "label": "Commands",
+            "format": "raw",
+            "visible": "always"
+          },
+          {
+            "path": "deadline",
+            "label": "Deadline",
+            "format": "date",
+            "params": {
+              "encoding": "timestamp"
+            },
+            "visible": "always"
+          }
+        ]
+      }
+    }
+  }
+}
