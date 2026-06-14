@@ -154,7 +154,7 @@ export function BridgeScreen({ navigation }: Props) {
             </Pressable>
           </View>
 
-          <Text style={s.title}>Bridge USDC</Text>
+          <Text style={s.title}>Cross-chain Transfer</Text>
           <Text style={s.subtitle}>Cross-chain via Chainlink CCIP</Text>
 
           {/* Route card */}
@@ -206,7 +206,7 @@ export function BridgeScreen({ navigation }: Props) {
           </View>
 
           {/* Receiver input */}
-          <Text style={s.fieldLabel}>Receiver Address (Ethereum Sepolia)</Text>
+          <Text style={s.fieldLabel}>Receiver Address</Text>
           <TextInput
             style={[s.input, s.addressInput]}
             value={localReceiver}
@@ -247,7 +247,7 @@ export function BridgeScreen({ navigation }: Props) {
             <Text style={s.infoBody}>
               1. Approve USDC on Fuji (tap card once){'\n'}
               2. Send via CCIP router (tap card again){'\n'}
-              3. USDC arrives on Ethereum Sepolia in 5–30 min
+              3. USDC arrives on Destination Chain.
             </Text>
           </View>
         </ScrollView>

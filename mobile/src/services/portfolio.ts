@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Contract, JsonRpcProvider, formatUnits } from 'ethers';
+import type { NetworkKey } from '../state/network';
 import type { PortfolioAsset, PortfolioSnapshot } from '../types/portfolio';
 
-const RPC_URL = 'https://ethereum-sepolia-rpc.publicnode.com';
 const IMAGE_CACHE_KEY = 'betterwallet.tokenImageUrls.v1';
 const DEFI_LLAMA_ENDPOINT = 'https://coins.llama.fi/prices/current';
 const COINGECKO_MARKETS_ENDPOINT = 'https://api.coingecko.com/api/v3/coins/markets';
@@ -15,37 +15,89 @@ interface TokenConfig {
   symbol: string;
   defaultName: string;
   decimals: number;
-  sepoliaAddress: 'native' | `0x${string}`;
+  address: 'native' | `0x${string}`;
   defiLlamaKey: string;
   coingeckoId: string;
 }
 
-const TOKENS: TokenConfig[] = [
-  {
-    symbol: 'ETH',
-    defaultName: 'Ethereum',
-    decimals: 18,
-    sepoliaAddress: 'native',
-    defiLlamaKey: 'coingecko:ethereum',
-    coingeckoId: 'ethereum',
+interface NetworkConfig {
+  rpcUrl: string;
+  tokens: TokenConfig[];
+}
+
+const NETWORK_CONFIGS: Record<NetworkKey, NetworkConfig> = {
+  'eth-sepolia': {
+    rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
+    tokens: [
+      {
+        symbol: 'ETH',
+        defaultName: 'Ethereum',
+        decimals: 18,
+        address: 'native',
+        defiLlamaKey: 'coingecko:ethereum',
+        coingeckoId: 'ethereum',
+      },
+      {
+        symbol: 'USDC',
+        defaultName: 'USD Coin',
+        decimals: 6,
+        address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+        defiLlamaKey: 'coingecko:usd-coin',
+        coingeckoId: 'usd-coin',
+      },
+      {
+        symbol: 'WETH',
+        defaultName: 'Wrapped Ether',
+        decimals: 18,
+        address: '0xfff9976782d46cc05630d1f6ebab18b2324d6b14',
+        defiLlamaKey: 'coingecko:weth',
+        coingeckoId: 'weth',
+      },
+    ],
   },
-  {
-    symbol: 'USDC',
-    defaultName: 'USD Coin',
-    decimals: 6,
-    sepoliaAddress: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
-    defiLlamaKey: 'coingecko:usd-coin',
-    coingeckoId: 'usd-coin',
+  'avax-fuji': {
+    rpcUrl: 'https://api.avax-test.network/ext/bc/C/rpc',
+    tokens: [
+      {
+        symbol: 'AVAX',
+        defaultName: 'Avalanche',
+        decimals: 18,
+        address: 'native',
+        defiLlamaKey: 'coingecko:avalanche-2',
+        coingeckoId: 'avalanche-2',
+      },
+      {
+        symbol: 'USDC',
+        defaultName: 'USD Coin',
+        decimals: 6,
+        address: '0x5425890298aed601595a70AB815c96711a31Bc65',
+        defiLlamaKey: 'coingecko:usd-coin',
+        coingeckoId: 'usd-coin',
+      },
+    ],
   },
-  {
-    symbol: 'WETH',
-    defaultName: 'Wrapped Ether',
-    decimals: 18,
-    sepoliaAddress: '0xfff9976782d46cc05630d1f6ebab18b2324d6b14',
-    defiLlamaKey: 'coingecko:weth',
-    coingeckoId: 'weth',
+  'base-mainnet': {
+    rpcUrl: 'https://mainnet.base.org',
+    tokens: [
+      {
+        symbol: 'ETH',
+        defaultName: 'Ethereum',
+        decimals: 18,
+        address: 'native',
+        defiLlamaKey: 'coingecko:ethereum',
+        coingeckoId: 'ethereum',
+      },
+      {
+        symbol: 'USDC',
+        defaultName: 'USD Coin',
+        decimals: 6,
+        address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        defiLlamaKey: 'coingecko:usd-coin',
+        coingeckoId: 'usd-coin',
+      },
+    ],
   },
-];
+};
 
 interface DeFiLlamaResponse {
   coins?: Record<string, { price?: number }>;
@@ -63,8 +115,6 @@ interface ImageMetadata {
 }
 
 type ImageCacheByCoinGeckoId = Record<string, ImageMetadata>;
-
-const provider = new JsonRpcProvider(RPC_URL);
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -174,11 +224,13 @@ async function fetchMissingTokenImages(
   return map;
 }
 
-async function getImageMetadataByCoinGeckoId(): Promise<ImageCacheByCoinGeckoId> {
+async function getImageMetadataByCoinGeckoId(
+  tokens: TokenConfig[],
+): Promise<ImageCacheByCoinGeckoId> {
   const cache = await loadImageCache();
-  const missingCoinGeckoIds = TOKENS.map((token) => token.coingeckoId).filter(
-    (coinGeckoId) => !cache[coinGeckoId]?.imageUrl,
-  );
+  const missingCoinGeckoIds = tokens
+    .map((token) => token.coingeckoId)
+    .filter((coinGeckoId) => !cache[coinGeckoId]?.imageUrl);
 
   if (missingCoinGeckoIds.length === 0) {
     return cache;
@@ -194,8 +246,10 @@ async function getImageMetadataByCoinGeckoId(): Promise<ImageCacheByCoinGeckoId>
   return merged;
 }
 
-async function fetchPricesByDefiLlamaKey(): Promise<Record<string, number>> {
-  const keys = TOKENS.map((token) => token.defiLlamaKey);
+async function fetchPricesByDefiLlamaKey(
+  tokens: TokenConfig[],
+): Promise<Record<string, number>> {
+  const keys = tokens.map((token) => token.defiLlamaKey);
   const data = await fetchJsonWithTimeout<DeFiLlamaResponse>(
     `${DEFI_LLAMA_ENDPOINT}/${keys.join(',')}`,
   );
@@ -209,18 +263,24 @@ async function fetchPricesByDefiLlamaKey(): Promise<Record<string, number>> {
   return result;
 }
 
-async function fetchBalances(walletAddress: string): Promise<Record<string, number>> {
+async function fetchBalances(
+  walletAddress: string,
+  tokens: TokenConfig[],
+  rpcUrl: string,
+): Promise<Record<string, number>> {
+  const provider = new JsonRpcProvider(rpcUrl);
+
   const balances = await Promise.all(
-    TOKENS.map(async (token) => {
+    tokens.map(async (token) => {
       const raw =
-        token.sepoliaAddress === 'native'
+        token.address === 'native'
           ? await withTimeout(
               provider.getBalance(walletAddress),
               RPC_TIMEOUT_MS,
               `${token.symbol} balance lookup`,
             )
           : await withTimeout(
-              new Contract(token.sepoliaAddress, ERC20_ABI, provider).balanceOf(walletAddress),
+              new Contract(token.address, ERC20_ABI, provider).balanceOf(walletAddress),
               RPC_TIMEOUT_MS,
               `${token.symbol} balance lookup`,
             );
@@ -231,39 +291,46 @@ async function fetchBalances(walletAddress: string): Promise<Record<string, numb
   return Object.fromEntries(balances);
 }
 
-export async function getPortfolio(walletAddress: string): Promise<PortfolioSnapshot> {
+export async function getPortfolio(
+  walletAddress: string,
+  network: NetworkKey = 'eth-sepolia',
+): Promise<PortfolioSnapshot> {
   const normalizedAddress = walletAddress.trim();
   if (!normalizedAddress) {
     throw new Error('Wallet address is required to load portfolio.');
   }
 
+  const { rpcUrl, tokens } = NETWORK_CONFIGS[network];
+
   const [balancesBySymbol, pricesByDefiLlamaKey] = await Promise.all([
-    fetchBalances(normalizedAddress),
-    fetchPricesByDefiLlamaKey(),
+    fetchBalances(normalizedAddress, tokens, rpcUrl),
+    fetchPricesByDefiLlamaKey(tokens),
   ]);
 
   let imageMetadataByCoinGeckoId: ImageCacheByCoinGeckoId = {};
   try {
-    imageMetadataByCoinGeckoId = await getImageMetadataByCoinGeckoId();
+    imageMetadataByCoinGeckoId = await getImageMetadataByCoinGeckoId(tokens);
   } catch {
     imageMetadataByCoinGeckoId = {};
   }
 
-  const assets: PortfolioAsset[] = TOKENS.map((token) => {
-    const amount = balancesBySymbol[token.symbol] ?? 0;
-    const priceUsd = pricesByDefiLlamaKey[token.defiLlamaKey] ?? 0;
-    const valueUsd = amount * priceUsd;
-    const imageMetadata = imageMetadataByCoinGeckoId[token.coingeckoId];
+  const assets: PortfolioAsset[] = tokens
+    .map((token) => {
+      const amount = balancesBySymbol[token.symbol] ?? 0;
+      const priceUsd = pricesByDefiLlamaKey[token.defiLlamaKey] ?? 0;
+      const valueUsd = amount * priceUsd;
+      const imageMetadata = imageMetadataByCoinGeckoId[token.coingeckoId];
 
-    return {
-      symbol: token.symbol,
-      name: imageMetadata?.name ?? token.defaultName,
-      amount,
-      priceUsd,
-      valueUsd,
-      imageUrl: imageMetadata?.imageUrl ?? '',
-    };
-  }).sort((a, b) => b.valueUsd - a.valueUsd);
+      return {
+        symbol: token.symbol,
+        name: imageMetadata?.name ?? token.defaultName,
+        amount,
+        priceUsd,
+        valueUsd,
+        imageUrl: imageMetadata?.imageUrl ?? '',
+      };
+    })
+    .sort((a, b) => b.valueUsd - a.valueUsd);
 
   const totalUsd = assets.reduce((sum, asset) => sum + asset.valueUsd, 0);
 

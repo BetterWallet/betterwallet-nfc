@@ -12,12 +12,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createReviewDetails, validateAmount, validateRecipientAddress } from '../services/ethTransaction';
 import { useSendFlow } from '../state/sendFlow';
+import { useNetwork } from '../state/network';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Send'>;
 
 export function SendScreen({ navigation }: Props) {
   const { state, setDraft, setReview, setStage } = useSendFlow();
+  const { networkOption } = useNetwork();
   const [localError, setLocalError] = useState<string | null>(null);
 
   const usdEstimate = useMemo(() => {
@@ -63,7 +65,9 @@ export function SendScreen({ navigation }: Props) {
           </Pressable>
           <Text style={s.title}>Send</Text>
           <Text style={s.subtitle}>Better Wallet</Text>
-          <Text style={s.networkBadge}>EVM / Sepolia</Text>
+          <Text style={[s.networkBadge, { borderColor: networkOption.color, color: networkOption.color }]}>
+            {networkOption.label}
+          </Text>
         </View>
 
         <View style={s.section}>

@@ -19,12 +19,14 @@ import {
   BLINK_TOKEN,
 } from '../config/blink'
 import type { RootStackParamList } from '../navigation/RootNavigator'
+import { useNetwork } from '../state/network'
 import { useWallet } from '../state/wallet'
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Receive'>
 
 export function ReceiveScreen({ navigation }: Props) {
   const { wallet } = useWallet()
+  const { networkOption } = useNetwork()
 
   const { status, result, displayMessage, requestDeposit, handleDeepLink } =
     useBlinkMobileDeposit({
@@ -86,7 +88,7 @@ export function ReceiveScreen({ navigation }: Props) {
       <View style={s.body}>
         <View style={s.card}>
           <Text style={s.cardTitle}>Deposit USDC</Text>
-          <Text style={s.cardSubtitle}>Fund your Sepolia wallet via Blink</Text>
+          <Text style={s.cardSubtitle}>Fund your {networkOption.label} wallet via Blink</Text>
 
           {wallet?.address ? (
             <View style={s.addressWrap}>
@@ -97,7 +99,7 @@ export function ReceiveScreen({ navigation }: Props) {
             </View>
           ) : null}
 
-          <Text style={s.networkNote}>Network: Sepolia testnet</Text>
+          <Text style={[s.networkNote, { color: networkOption.color }]}>Network: {networkOption.label}</Text>
           <Text style={s.tokenNote}>Token: USDC</Text>
         </View>
 

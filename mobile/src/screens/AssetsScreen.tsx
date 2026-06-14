@@ -2,7 +2,9 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -16,6 +18,7 @@ import { formatTokenAmount, formatUsd } from '../services/portfolioFormatting';
 import { getPortfolio } from '../services/portfolio';
 import { useSendFlow } from '../state/sendFlow';
 import { useWallet } from '../state/wallet';
+import { NETWORK_OPTIONS, useNetwork } from '../state/network';
 import type { PortfolioAsset, PortfolioSnapshot } from '../types/portfolio';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Assets'>;
@@ -23,10 +26,12 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Assets'>;
 export function AssetsScreen({ navigation }: Props) {
   const { reset } = useSendFlow();
   const { wallet, clearWallet } = useWallet();
+  const { selectedNetwork, setSelectedNetwork, networkOption } = useNetwork();
   const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showNetworkModal, setShowNetworkModal] = useState(false);
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
 
@@ -48,6 +53,17 @@ export function AssetsScreen({ navigation }: Props) {
     navigation.navigate('Bridge');
   };
 
+  const onGearPress = () => {
+    Alert.alert('Settings', undefined, [
+      {
+        text: 'Unpair Wallet',
+        style: 'destructive',
+        onPress: () => void clearWallet(),
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   const loadPortfolio = useCallback(
     async (refresh = false) => {
       if (!wallet?.address) {
@@ -64,7 +80,7 @@ export function AssetsScreen({ navigation }: Props) {
       }
 
       try {
-        const nextPortfolio = await getPortfolio(wallet.address);
+        const nextPortfolio = await getPortfolio(wallet.address, selectedNetwork);
         if (!mountedRef.current || requestIdRef.current !== requestId) {
           return;
         }
@@ -88,7 +104,7 @@ export function AssetsScreen({ navigation }: Props) {
         }
       }
     },
-    [wallet?.address],
+    [wallet?.address, selectedNetwork],
   );
 
   useEffect(() => {
@@ -98,7 +114,7 @@ export function AssetsScreen({ navigation }: Props) {
     setPortfolio(null);
     setError(null);
     void loadPortfolio();
-  }, [loadPortfolio, wallet?.address]);
+  }, [loadPortfolio, wallet?.address, selectedNetwork]);
 
   useEffect(() => {
     return () => {
@@ -160,18 +176,13 @@ export function AssetsScreen({ navigation }: Props) {
         }
       >
         <View style={s.topBar}>
-          <Pressable style={s.iconButton}>
-            <Text style={s.icon}>☰</Text>
+          <View style={s.iconButton} />
+          <Pressable style={s.networkPill} onPress={() => setShowNetworkModal(true)}>
+            <View style={[s.networkDot, { backgroundColor: networkOption.color }]} />
+            <Text style={s.networkPillText}>{networkOption.label}</Text>
+            <Text style={s.networkChevron}>▾</Text>
           </Pressable>
-          <View style={s.topBarCenter}>
-            <View style={s.walletPill}>
-              <Text style={s.walletPillText}>
-                {wallet.address.slice(0, 6)}...{wallet.address.slice(-4)}
-              </Text>
-            </View>
-            <Text style={s.networkBadge}>{wallet.networkName}</Text>
-          </View>
-          <Pressable style={s.iconButton}>
+          <Pressable style={s.iconButton} onPress={onGearPress}>
             <Text style={s.icon}>⚙</Text>
           </Pressable>
         </View>
@@ -188,13 +199,15 @@ export function AssetsScreen({ navigation }: Props) {
           <Pressable style={s.actionButton} onPress={goToSend}>
             <Text style={s.actionText}>Send</Text>
           </Pressable>
-          <Pressable style={s.mainAction} onPress={goToSwap}>
-            <Text style={s.mainActionText}>⇄</Text>
+          <View style={s.actionDivider} />
+          <Pressable style={s.actionButton} onPress={goToSwap}>
+            <Text style={s.actionText}>Swap</Text>
           </Pressable>
-          <Pressable style={s.bridgeButton} onPress={goToBridge}>
-            <View style={s.bridgeAvaxDot} />
+          <View style={s.actionDivider} />
+          <Pressable style={s.actionButton} onPress={goToBridge}>
             <Text style={s.actionText}>Bridge</Text>
           </Pressable>
+          <View style={s.actionDivider} />
           <Pressable style={s.actionButton} onPress={goToReceive}>
             <Text style={s.actionText}>Receive</Text>
           </Pressable>
@@ -225,7 +238,7 @@ export function AssetsScreen({ navigation }: Props) {
             <View style={s.emptyAssetCard}>
               <Text style={s.emptyAssetTitle}>No assets yet</Text>
               <Text style={s.emptyAssetHint}>
-                Fund this wallet on Sepolia to see your live token balances.
+                Fund this wallet on {networkOption.label} to see your live token balances.
               </Text>
             </View>
           ) : (
@@ -250,16 +263,38 @@ export function AssetsScreen({ navigation }: Props) {
         </View>
       </ScrollView>
 
-      <View style={s.bottomNav}>
-        <View style={s.bottomItemActive}>
-          <Text style={s.bottomItemActiveText}>Assets</Text>
-        </View>
-        <Text style={s.bottomItem}>Market</Text>
-        <Text style={s.bottomItem}>Alerts</Text>
-        <Pressable onPress={() => void clearWallet()}>
-          <Text style={s.bottomItem}>Unpair</Text>
+      <Modal
+        visible={showNetworkModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowNetworkModal(false)}
+      >
+        <Pressable style={s.modalBackdrop} onPress={() => setShowNetworkModal(false)}>
+          <Pressable style={s.modalSheet} onPress={() => {}}>
+            <View style={s.modalHandle} />
+            <Text style={s.modalTitle}>Select Network</Text>
+            {NETWORK_OPTIONS.map((option) => {
+              const isSelected = option.key === selectedNetwork;
+              return (
+                <Pressable
+                  key={option.key}
+                  style={[s.networkOption, isSelected && s.networkOptionSelected]}
+                  onPress={() => {
+                    setSelectedNetwork(option.key);
+                    setShowNetworkModal(false);
+                  }}
+                >
+                  <View style={[s.networkOptionDot, { backgroundColor: option.color }]} />
+                  <Text style={[s.networkOptionText, isSelected && s.networkOptionTextSelected]}>
+                    {option.label}
+                  </Text>
+                  {isSelected ? <Text style={s.networkCheckmark}>✓</Text> : null}
+                </Pressable>
+              );
+            })}
+          </Pressable>
         </Pressable>
-      </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -286,7 +321,7 @@ const s = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 20,
-    paddingBottom: 120,
+    paddingBottom: 40,
   },
   loadingWrap: {
     flex: 1,
@@ -315,11 +350,10 @@ const s = StyleSheet.create({
     color: '#c9c9c9',
     fontSize: 18,
   },
-  topBarCenter: {
+  networkPill: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-  },
-  walletPill: {
+    gap: 6,
     backgroundColor: '#1c1b1b',
     borderRadius: 999,
     borderWidth: 1,
@@ -327,16 +361,19 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  walletPillText: {
+  networkDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  networkPillText: {
     color: '#f5f5f5',
     fontSize: 13,
     fontWeight: '600',
   },
-  networkBadge: {
-    color: '#c8f323',
-    fontSize: 11,
-    fontWeight: '600',
-    opacity: 0.9,
+  networkChevron: {
+    color: '#888',
+    fontSize: 12,
   },
   balanceHero: {
     marginTop: 30,
@@ -370,17 +407,16 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: '#2a2a2a',
     backgroundColor: '#1c1b1b',
-    paddingVertical: 8,
-    paddingHorizontal: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
   },
   actionButton: {
-    borderRadius: 999,
-    paddingHorizontal: 14,
+    flex: 1,
+    alignItems: 'center',
     paddingVertical: 12,
   },
   actionText: {
@@ -388,48 +424,10 @@ const s = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  bridgeButton: {
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  bridgeAvaxDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#E84142',
-  },
-  mainAction: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#c8f323',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mainActionText: {
-    color: '#1d2800',
-    fontSize: 28,
-    lineHeight: 30,
-    fontWeight: '700',
-  },
-  uniswapBadge: {
-    marginTop: 10,
-    alignSelf: 'center',
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#6f3558',
-    backgroundColor: '#2b1724',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  uniswapBadgeText: {
-    color: '#f3c5e5',
-    fontSize: 12,
-    fontWeight: '600',
+  actionDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: '#2a2a2a',
   },
   listHeader: {
     marginTop: 28,
@@ -561,37 +559,6 @@ const s = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
   },
-  bottomNav: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 86,
-    paddingHorizontal: 14,
-    paddingBottom: 18,
-    borderTopWidth: 1,
-    borderTopColor: '#222',
-    backgroundColor: 'rgba(14,14,14,0.95)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-  },
-  bottomItemActive: {
-    backgroundColor: 'rgba(200,243,35,0.14)',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  bottomItemActiveText: {
-    color: '#c8f323',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  bottomItem: {
-    color: '#868686',
-    fontSize: 12,
-    fontWeight: '600',
-  },
   emptyWrap: {
     flex: 1,
     alignItems: 'center',
@@ -611,6 +578,65 @@ const s = StyleSheet.create({
   },
   primaryActionText: {
     color: '#1a2400',
+    fontWeight: '700',
+  },
+  // Network selection modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#1a1a1a',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 12,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+    gap: 4,
+  },
+  modalHandle: {
+    alignSelf: 'center',
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#3a3a3a',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  networkOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+  },
+  networkOptionSelected: {
+    backgroundColor: 'rgba(200,243,35,0.08)',
+  },
+  networkOptionDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  networkOptionText: {
+    flex: 1,
+    color: '#c0c0c0',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  networkOptionTextSelected: {
+    color: '#fff',
+  },
+  networkCheckmark: {
+    color: '#c8f323',
+    fontSize: 16,
     fontWeight: '700',
   },
 });
