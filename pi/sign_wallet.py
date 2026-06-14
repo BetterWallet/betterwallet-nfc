@@ -106,9 +106,10 @@ def sign_request_payload(sign_request: dict, keypair: dict[str, str]) -> str:
         log("Unsigned tx has no from address; defaulting signer to keystore address")
 
     nonce = resolve_nonce(unsigned_tx)
+    chain_id = parse_int(unsigned_tx.get("chainId", SEPOLIA_CHAIN_ID), "chainId")
     tx_dict = {
         "type": 2,
-        "chainId": SEPOLIA_CHAIN_ID,
+        "chainId": chain_id,
         "nonce": nonce,
         "to": unsigned_tx["to"],
         "value": parse_int(unsigned_tx["valueWei"], "valueWei"),
@@ -117,6 +118,7 @@ def sign_request_payload(sign_request: dict, keypair: dict[str, str]) -> str:
         "maxPriorityFeePerGas": parse_int(
             unsigned_tx["maxPriorityFeePerGasWei"], "maxPriorityFeePerGasWei"
         ),
+        "data": unsigned_tx.get("data", "0x"),
     }
 
     signed = Account.sign_transaction(tx_dict, keypair["private_key"])
@@ -125,8 +127,10 @@ def sign_request_payload(sign_request: dict, keypair: dict[str, str]) -> str:
 
     log(f"Sign request id: {sign_request['id']}")
     log(f"Signer address: {signer_address}")
+    log(f"Chain ID: {chain_id}")
     log(f"To address: {unsigned_tx['to']}")
     log(f"Value (wei): {tx_dict['value']}")
+    log(f"Data prefix: {tx_dict['data'][:10] if tx_dict['data'] else '(none)'}")
     log(f"Gas limit: {tx_dict['gas']}")
     log(f"Max fee per gas (wei): {tx_dict['maxFeePerGas']}")
     log(f"Max priority fee per gas (wei): {tx_dict['maxPriorityFeePerGas']}")
