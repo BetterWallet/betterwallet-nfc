@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import errno
 import hashlib
 import json
 import time
@@ -14,7 +15,7 @@ from eth_account import Account
 from nacl.signing import SigningKey
 
 from protocol import is_card_moved_away_error, read_payload, select_aid, write_payload
-from setup import nfc, setup
+from setup import nfc, reconnect_pn532, setup
 from wallet_keys import SEPOLIA_CHAIN_ID, SOLANA_CLUSTER, EvmKeypair, SolanaKeypair
 
 try:
@@ -33,6 +34,12 @@ STATUS_READY = "ready"
 STATUS_ERROR = "error"
 _registry = None
 LOCAL_ERC7730_REGISTRY_ROOT = Path(__file__).resolve().parent / "erc7730_registry"
+_TRANSPORT_ERROR_HINTS = (
+    "input/output error",
+    "remote i/o error",
+    "timed out waiting for ack",
+    "didn't find pn53x board",
+)
 
 
 def is_retryable_nfc_error_message(message: str) -> bool:
@@ -169,29 +176,77 @@ class NfcWalletService:
     def __init__(self) -> None:
         self._is_setup = False
 
+    def _is_transport_error(self, error: object) -> bool:
+        if is_card_moved_away_error(error):
+            return False
+        if isinstance(error, OSError) and error.errno in (errno.EIO, 121):
+            return True
+        message = str(error).lower()
+        return any(hint in message for hint in _TRANSPORT_ERROR_HINTS)
+
+    def _recover_transport_error(self, operation_name: str, error: Exception) -> bool:
+        if not self._is_transport_error(error):
+            return False
+        log(f"Detected PN532 transport error during {operation_name}. Reconnecting module.")
+        try:
+            reconnect_pn532()
+            self._is_setup = True
+            return True
+        except Exception as reconnect_exc:  # noqa: BLE001
+            self._is_setup = False
+            log(f"PN532 reconnect failed during {operation_name}: {reconnect_exc}")
+            return False
+
     def ensure_hardware_ready(self) -> None:
         if self._is_setup:
             return
-        setup()
-        self._is_setup = True
+        try:
+            setup()
+            self._is_setup = True
+            return
+        except Exception as exc:  # noqa: BLE001
+            if self._recover_transport_error("initial setup", exc):
+                return
+            raise
 
     def _wait_for_card(self, stop_event=None, timeout_s: float = 45.0) -> str:
         start = time.time()
+        recovery_attempted = False
         while True:
             if stop_event and stop_event.is_set():
                 return STATUS_STOPPED
-            if nfc.inListPassiveTarget():
+            try:
+                card_present = nfc.inListPassiveTarget()
+            except Exception as exc:  # noqa: BLE001
+                if not recovery_attempted and self._recover_transport_error("card detection", exc):
+                    recovery_attempted = True
+                    continue
+                raise
+            if card_present:
                 return STATUS_READY
             if time.time() - start > timeout_s:
                 return STATUS_TIMEOUT
             time.sleep(0.15)
 
     def wait_for_json_request(self, stop_event=None, timeout_s: float = 45.0) -> tuple[str, dict[str, Any] | None]:
-        self.ensure_hardware_ready()
-        status = self._wait_for_card(stop_event=stop_event, timeout_s=timeout_s)
+        try:
+            self.ensure_hardware_ready()
+            status = self._wait_for_card(stop_event=stop_event, timeout_s=timeout_s)
+        except Exception as exc:  # noqa: BLE001
+            return STATUS_ERROR, {"message": f"NFC hardware error: {exc}"}
         if status != STATUS_READY:
             return status, None
-        if not select_aid():
+        try:
+            selected = select_aid()
+        except Exception as exc:  # noqa: BLE001
+            if self._recover_transport_error("SELECT AID (tap 1)", exc):
+                try:
+                    selected = select_aid()
+                except Exception as retry_exc:  # noqa: BLE001
+                    return STATUS_ERROR, {"message": f"NFC hardware error: {retry_exc}"}
+            else:
+                return STATUS_ERROR, {"message": f"NFC hardware error: {exc}"}
+        if not selected:
             return STATUS_ERROR, {"message": "SELECT AID failed during tap 1."}
         try:
             payload = read_payload()
@@ -202,7 +257,18 @@ class NfcWalletService:
         except Exception as exc:  # noqa: BLE001 - UI caller displays error message
             if is_card_moved_away_error(exc):
                 return STATUS_TIMEOUT, {"message": "Card moved away. Please tap again."}
-            return STATUS_ERROR, {"message": f"Unable to parse NFC payload: {exc}"}
+            if self._recover_transport_error("read payload (tap 1)", exc):
+                try:
+                    payload = read_payload()
+                    request = json.loads(payload.decode("utf-8"))
+                    if not isinstance(request, dict):
+                        raise ValueError("Request payload must be a JSON object")
+                    return STATUS_READY, request
+                except Exception as retry_exc:  # noqa: BLE001
+                    if is_card_moved_away_error(retry_exc):
+                        return STATUS_TIMEOUT, {"message": "Card moved away. Please tap again."}
+                    return STATUS_ERROR, {"message": f"NFC hardware error: {retry_exc}"}
+            return STATUS_ERROR, {"message": f"NFC hardware error: {exc}"}
 
     def send_json_response(
         self,
@@ -210,14 +276,30 @@ class NfcWalletService:
         stop_event=None,
         timeout_s: float = 45.0,
     ) -> tuple[bool, str]:
-        self.ensure_hardware_ready()
+        try:
+            self.ensure_hardware_ready()
+        except Exception as exc:  # noqa: BLE001
+            return False, f"NFC hardware error: {exc}"
         time.sleep(0.75)
-        status = self._wait_for_card(stop_event=stop_event, timeout_s=timeout_s)
+        try:
+            status = self._wait_for_card(stop_event=stop_event, timeout_s=timeout_s)
+        except Exception as exc:  # noqa: BLE001
+            return False, f"NFC hardware error: {exc}"
         if status == STATUS_STOPPED:
             return False, "Cancelled while waiting for tap 2."
         if status == STATUS_TIMEOUT:
             return False, "Timed out waiting for tap 2."
-        if not select_aid():
+        try:
+            selected = select_aid()
+        except Exception as exc:  # noqa: BLE001
+            if self._recover_transport_error("SELECT AID (tap 2)", exc):
+                try:
+                    selected = select_aid()
+                except Exception as retry_exc:  # noqa: BLE001
+                    return False, f"NFC hardware error: {retry_exc}"
+            else:
+                return False, f"NFC hardware error: {exc}"
+        if not selected:
             return False, "SELECT AID failed during tap 2."
         try:
             write_payload(json.dumps(payload).encode("utf-8"))
@@ -225,7 +307,15 @@ class NfcWalletService:
         except Exception as exc:  # noqa: BLE001
             if is_card_moved_away_error(exc):
                 return False, "Card moved away during transfer. Please tap again."
-            return False, f"Unable to send NFC response: {exc}"
+            if self._recover_transport_error("write payload (tap 2)", exc):
+                try:
+                    write_payload(json.dumps(payload).encode("utf-8"))
+                    return True, "Response sent."
+                except Exception as retry_exc:  # noqa: BLE001
+                    if is_card_moved_away_error(retry_exc):
+                        return False, "Card moved away during transfer. Please tap again."
+                    return False, f"NFC hardware error: {retry_exc}"
+            return False, f"NFC hardware error: {exc}"
 
     def is_pair_request(self, request: dict[str, Any]) -> bool:
         return request.get("type") == "pair_request"

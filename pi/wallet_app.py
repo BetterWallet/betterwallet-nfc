@@ -367,6 +367,13 @@ class WalletGuiApp:
                     self.set_screen(SCREEN_NETWORK)
                 else:
                     if self.listen_mode == "passive":
+                        message = "NFC error."
+                        if isinstance(detail, dict):
+                            message = str(detail.get("message", message))
+                        if message.lower().startswith("nfc hardware error:"):
+                            self.status_message = message
+                            self.set_screen(SCREEN_STATUS)
+                            continue
                         self.log_lines.append("Passive NFC error")
                         self.start_listen_worker(mode="passive")
                         continue

@@ -21,9 +21,22 @@ class Pn532I2c(Pn532Interface):
         self._bus = bus
         self._command = 0
 
+    @staticmethod
+    def _is_retryable_i2c_error(error: IOError) -> bool:
+        return error.errno in (errno.EIO, 121)  # 121=EREMOTEIO, NAK on Linux 5.3+
+
     def begin(self):
+        self.close()
         self._wire = I2CMaster(self._bus)
         time.sleep(1)
+
+    def close(self):
+        if self._wire is None:
+            return
+        try:
+            self._wire.close()
+        finally:
+            self._wire = None
 
     def wakeup(self):
         time.sleep(.05)  # PN532 wakes on first I2C transaction; no write needed
@@ -70,7 +83,7 @@ class Pn532I2c(Pn532Interface):
                   # check first byte --- status
                     break # PN532 is ready
             except IOError as e:
-                if e.errno not in (errno.EIO, 121):  # 121=EREMOTEIO, NAK on Linux 5.3+
+                if not self._is_retryable_i2c_error(e):
                     raise
 
             time.sleep(.001)    # sleep 1 ms
@@ -91,7 +104,11 @@ class Pn532I2c(Pn532Interface):
 
         # request for last respond msg again
         DMSG('_getResponseLength writing nack: {!r}'.format(PN532_NACK))
-        self._wire.transaction(writing(PN532_I2C_ADDRESS, PN532_NACK))
+        try:
+            self._wire.transaction(writing(PN532_I2C_ADDRESS, PN532_NACK))
+        except IOError as e:
+            if not self._is_retryable_i2c_error(e):
+                raise
 
         return length
 
@@ -105,11 +122,15 @@ class Pn532I2c(Pn532Interface):
 
         # [RDY] 00 00 FF LEN LCS (TFI PD0 ... PDn) DCS 00
         while 1:
-            responses = self._wire.transaction(reading(PN532_I2C_ADDRESS, 6 + length + 2))
-            data = bytearray(responses[0])
-            if (data[0] & 1):
-              # check first byte --- status
-                break # PN532 is ready
+            try:
+                responses = self._wire.transaction(reading(PN532_I2C_ADDRESS, 6 + length + 2))
+                data = bytearray(responses[0])
+                if (data[0] & 1):
+                  # check first byte --- status
+                    break # PN532 is ready
+            except IOError as e:
+                if not self._is_retryable_i2c_error(e):
+                    raise
 
             time.sleep(.001)     # sleep 1 ms
             t+=1
@@ -168,7 +189,7 @@ class Pn532I2c(Pn532Interface):
                     # check first byte --- status
                     break # PN532 is ready
             except IOError as e:
-                if e.errno not in (errno.EIO, 121):  # 121=EREMOTEIO, NAK on Linux 5.3+
+                if not self._is_retryable_i2c_error(e):
                     raise
 
             time.sleep(.001)    # sleep 1 ms
@@ -190,7 +211,7 @@ class Pn532I2c(Pn532Interface):
             try:
                 self._wire.transaction(writing(PN532_I2C_ADDRESS, PN532_NACK))
             except IOError as e:
-                if e.errno not in (errno.EIO, 121):
+                if not self._is_retryable_i2c_error(e):
                     raise
 
         return 0
