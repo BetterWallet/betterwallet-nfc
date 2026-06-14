@@ -17,6 +17,7 @@ import {
   BLINK_CHAIN_ID,
   BLINK_SIGNER_URL,
   BLINK_TOKEN,
+  BLINK_WEBVIEW_BASE_URL,
 } from '../config/blink'
 import type { RootStackParamList } from '../navigation/RootNavigator'
 import { useWallet } from '../state/wallet'
@@ -30,6 +31,7 @@ export function ReceiveScreen({ navigation }: Props) {
     useBlinkMobileDeposit({
       signer: BLINK_SIGNER_URL,
       callbackScheme: BLINK_CALLBACK_SCHEME,
+      webviewBaseUrl: BLINK_WEBVIEW_BASE_URL,
       openUrl: (url) => WebBrowser.openBrowserAsync(url).then(() => {}),
     })
 

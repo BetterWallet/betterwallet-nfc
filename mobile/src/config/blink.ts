@@ -1,5 +1,7 @@
 export const BLINK_SIGNER_URL =
-  process.env.EXPO_PUBLIC_BLINK_SIGNER_URL ?? 'http://localhost:3000/api/sign-payment'
+  process.env.EXPO_PUBLIC_BLINK_SIGNER_URL ?? 'https://betterwallet.dev/api/sign-payment-sandbox'
+
+export const BLINK_WEBVIEW_BASE_URL = 'https://pay-sandbox.blink.cash'
 
 export const BLINK_CHAIN_ID = 11155111 // Sepolia
 
