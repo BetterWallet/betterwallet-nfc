@@ -2,6 +2,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { AssetsScreen } from '../screens/AssetsScreen';
+import { ReceiveScreen } from '../screens/ReceiveScreen';
 import { ReviewScreen } from '../screens/ReviewScreen';
 import { ScanCardScreen } from '../screens/ScanCardScreen';
 import { SendScreen } from '../screens/SendScreen';
@@ -15,6 +16,7 @@ export type RootStackParamList = {
   Assets: undefined;
   Send: undefined;
   Swap: undefined;
+  Receive: undefined;
   Review: undefined;
   Scan: undefined;
   Success: undefined;
@@ -59,6 +61,7 @@ export function RootNavigator() {
       <Stack.Screen name="Assets" component={AssetsScreen} />
       <Stack.Screen name="Send" component={SendScreen} />
       <Stack.Screen name="Swap" component={SwapScreen} />
+      <Stack.Screen name="Receive" component={ReceiveScreen} />
       <Stack.Screen name="Review" component={ReviewScreen} />
       <Stack.Screen name="Scan" component={ScanCardScreen} />
       <Stack.Screen name="Success" component={TransactionSuccessScreen} />

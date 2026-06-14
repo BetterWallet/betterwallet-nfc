@@ -3,8 +3,12 @@
     "name": "Better Wallet",
     "slug": "mobile",
     "version": "1.0.0",
+    "scheme": "betterwallet",
     "android": {
       "package": "com.betterwallet"
-    }
+    },
+    "plugins": [
+      "expo-web-browser"
+    ]
   }
 }

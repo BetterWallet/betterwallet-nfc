@@ -40,6 +40,10 @@ export function AssetsScreen({ navigation }: Props) {
     navigation.navigate('Swap');
   };
 
+  const goToReceive = () => {
+    navigation.navigate('Receive');
+  };
+
   const loadPortfolio = useCallback(
     async (refresh = false) => {
       if (!wallet?.address) {
@@ -183,7 +187,7 @@ export function AssetsScreen({ navigation }: Props) {
           <Pressable style={s.mainAction} onPress={goToSwap}>
             <Text style={s.mainActionText}>⇄</Text>
           </Pressable>
-          <Pressable style={s.actionButton}>
+          <Pressable style={s.actionButton} onPress={goToReceive}>
             <Text style={s.actionText}>Receive</Text>
           </Pressable>
         </View>

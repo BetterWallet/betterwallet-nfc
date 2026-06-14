@@ -1,3 +1,6 @@
+# Private keys — never commit
+*.pem
+
 # Python
 __pycache__/
 *.pyc
@@ -29,3 +32,4 @@ mobile/src/config/sendDefaults.local.ts
 
 .agents/
 skills-lock.json
+website/.env.local
