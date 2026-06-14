@@ -1,6 +1,7 @@
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import React from 'react';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { BridgeFlowProvider } from './src/state/bridgeFlow';
 import { SendFlowProvider } from './src/state/sendFlow';
 import { WalletProvider } from './src/state/wallet';
 
@@ -18,9 +19,11 @@ export default function App() {
   return (
     <WalletProvider>
       <SendFlowProvider>
-        <NavigationContainer theme={navTheme}>
-          <RootNavigator />
-        </NavigationContainer>
+        <BridgeFlowProvider>
+          <NavigationContainer theme={navTheme}>
+            <RootNavigator />
+          </NavigationContainer>
+        </BridgeFlowProvider>
       </SendFlowProvider>
     </WalletProvider>
   );

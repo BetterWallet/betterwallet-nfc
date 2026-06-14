@@ -2,6 +2,10 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { AssetsScreen } from '../screens/AssetsScreen';
+import { BridgeReviewScreen } from '../screens/BridgeReviewScreen';
+import { BridgeScanScreen } from '../screens/BridgeScanScreen';
+import { BridgeScreen } from '../screens/BridgeScreen';
+import { BridgeSuccessScreen } from '../screens/BridgeSuccessScreen';
 import { ReceiveScreen } from '../screens/ReceiveScreen';
 import { ReviewScreen } from '../screens/ReviewScreen';
 import { ScanCardScreen } from '../screens/ScanCardScreen';
@@ -20,6 +24,10 @@ export type RootStackParamList = {
   Review: undefined;
   Scan: undefined;
   Success: undefined;
+  Bridge: undefined;
+  BridgeReview: undefined;
+  BridgeScan: undefined;
+  BridgeSuccess: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -65,6 +73,10 @@ export function RootNavigator() {
       <Stack.Screen name="Review" component={ReviewScreen} />
       <Stack.Screen name="Scan" component={ScanCardScreen} />
       <Stack.Screen name="Success" component={TransactionSuccessScreen} />
+      <Stack.Screen name="Bridge" component={BridgeScreen} />
+      <Stack.Screen name="BridgeReview" component={BridgeReviewScreen} />
+      <Stack.Screen name="BridgeScan" component={BridgeScanScreen} />
+      <Stack.Screen name="BridgeSuccess" component={BridgeSuccessScreen} />
     </Stack.Navigator>
   );
 }

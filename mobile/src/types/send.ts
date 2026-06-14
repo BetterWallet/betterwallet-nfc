@@ -20,6 +20,7 @@ export interface UnsignedTxPayload {
   maxFeePerGasWei: string;
   maxPriorityFeePerGasWei: string;
   data?: string;
+  chainId?: number;
 }
 
 export interface SwapReviewMeta {

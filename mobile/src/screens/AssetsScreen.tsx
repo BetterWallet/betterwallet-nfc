@@ -44,6 +44,10 @@ export function AssetsScreen({ navigation }: Props) {
     navigation.navigate('Receive');
   };
 
+  const goToBridge = () => {
+    navigation.navigate('Bridge');
+  };
+
   const loadPortfolio = useCallback(
     async (refresh = false) => {
       if (!wallet?.address) {
@@ -186,6 +190,10 @@ export function AssetsScreen({ navigation }: Props) {
           </Pressable>
           <Pressable style={s.mainAction} onPress={goToSwap}>
             <Text style={s.mainActionText}>⇄</Text>
+          </Pressable>
+          <Pressable style={s.bridgeButton} onPress={goToBridge}>
+            <View style={s.bridgeAvaxDot} />
+            <Text style={s.actionText}>Bridge</Text>
           </Pressable>
           <Pressable style={s.actionButton} onPress={goToReceive}>
             <Text style={s.actionText}>Receive</Text>
@@ -372,13 +380,27 @@ const s = StyleSheet.create({
   },
   actionButton: {
     borderRadius: 999,
-    paddingHorizontal: 22,
+    paddingHorizontal: 14,
     paddingVertical: 12,
   },
   actionText: {
     color: '#d0d0d0',
     fontSize: 13,
     fontWeight: '600',
+  },
+  bridgeButton: {
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  bridgeAvaxDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#E84142',
   },
   mainAction: {
     width: 48,
