@@ -13,7 +13,7 @@ import {
   getCcipExplorerUrl,
   getNonce,
 } from '../services/ccip';
-import { describeNfcError } from '../services/nfcError';
+import { describeFlowError } from '../services/nfcError';
 import { parseSignedTxMessage } from '../services/broadcast';
 import { useBridgeFlow } from '../state/bridgeFlow';
 import { useWallet } from '../state/wallet';
@@ -52,9 +52,9 @@ export function BridgeScanScreen({ navigation }: Props) {
     return STEP_CONFIG[key] ?? STEP_CONFIG.nfc_approve;
   }, [state.stage]);
 
-  const nfcError = useMemo(() => {
+  const flowError = useMemo(() => {
     if (!localError) return null;
-    return describeNfcError(localError, transferPhase);
+    return describeFlowError(localError, transferPhase);
   }, [localError, transferPhase]);
 
   useEffect(() => {
@@ -244,7 +244,25 @@ export function BridgeScanScreen({ navigation }: Props) {
           {'\n'}Hold your Better Wallet near the back of your phone.
         </Text>
 
-        {isBroadcasting ? (
+        {localError ? (
+          isBroadcasting ? (
+            <View style={s.errorCard}>
+              <Text style={s.errorTitle}>{flowError?.title ?? 'Transfer failed'}</Text>
+              <Text style={s.errorBody}>{flowError?.guidance ?? localError}</Text>
+            </View>
+          ) : (
+            <NfcTransferOverlay
+              phase={transferPhase}
+              progress={transferProgress}
+              errorTitle={flowError?.title}
+              error={flowError?.guidance ?? localError}
+              onRetry={onRetry}
+              retryLabel={flowError?.actionLabel ?? 'Retry'}
+              onClose={onCancel}
+              closeLabel="Cancel"
+            />
+          )
+        ) : isBroadcasting ? (
           <View style={s.phaseCard}>
             <Text style={s.phaseTitle}>{stepConfig.label}</Text>
             <Text style={s.phaseHint}>
@@ -258,24 +276,13 @@ export function BridgeScanScreen({ navigation }: Props) {
           <NfcTransferOverlay
             phase={transferPhase}
             progress={transferProgress}
-            error={
-              localError
-                ? `${nfcError?.title ?? 'NFC error'}\n${nfcError?.guidance ?? localError}`
-                : null
-            }
+            error={null}
             onRetry={onRetry}
-            retryLabel={nfcError?.actionLabel ?? 'Retry'}
+            retryLabel="Retry"
             onClose={onCancel}
             closeLabel="Cancel"
           />
         )}
-
-        {localError && isBroadcasting ? (
-          <View style={s.errorCard}>
-            <Text style={s.errorTitle}>Error</Text>
-            <Text style={s.errorBody}>{localError}</Text>
-          </View>
-        ) : null}
 
         <View style={s.footer}>
           {localError ? (

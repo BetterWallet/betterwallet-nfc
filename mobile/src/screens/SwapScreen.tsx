@@ -35,7 +35,7 @@ import {
   type QuoteResponse,
   type SwapTx,
 } from '../services/uniswap';
-import { describeNfcError, isLikelyNfcError } from '../services/nfcError';
+import { describeFlowError, isLikelyNfcError } from '../services/nfcError';
 import { useSendFlow } from '../state/sendFlow';
 import { useWallet } from '../state/wallet';
 import { useHCE } from '../useHCE';
@@ -96,11 +96,11 @@ export function SwapScreen({ navigation }: Props) {
     );
   }, [amount, tokenIn.address, tokenOut.address]);
   const canExecuteSwap = hasQuote && !isLoadingQuote && !isSigning;
-  const nfcError = useMemo(() => {
+  const flowError = useMemo(() => {
     if (!error) {
       return null;
     }
-    return describeNfcError(error, transferPhase);
+    return describeFlowError(error, transferPhase);
   }, [error, transferPhase]);
   const shouldShowNfcError = useMemo(() => (error ? isLikelyNfcError(error) : false), [error]);
   const sellAmountNumber = Number(amount || '0');
@@ -529,9 +529,10 @@ export function SwapScreen({ navigation }: Props) {
           <NfcTransferOverlay
             phase={transferPhase}
             progress={transferProgress}
-            error={error ? `${nfcError?.title ?? 'NFC error'}\n${nfcError?.guidance ?? error}` : null}
+            errorTitle={flowError?.title}
+            error={error ? (flowError?.guidance ?? error) : null}
             onRetry={!isSigning ? onSignAndSwap : undefined}
-            retryLabel={nfcError?.actionLabel ?? 'Retry'}
+            retryLabel={flowError?.actionLabel ?? 'Retry'}
             onClose={
               !isSigning
                 ? () => {

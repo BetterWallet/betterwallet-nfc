@@ -8,6 +8,7 @@ interface NfcTransferOverlayProps {
   phase: NfcTransferPhase;
   progress: NfcTransferProgress | null;
   error: string | null;
+  errorTitle?: string | null;
   onRetry?: () => void;
   retryLabel?: string;
   onClose?: () => void;
@@ -91,6 +92,7 @@ export function NfcTransferOverlay({
   phase,
   progress,
   error,
+  errorTitle,
   onRetry,
   retryLabel = 'Retry',
   onClose,
@@ -145,7 +147,9 @@ export function NfcTransferOverlay({
             </View>
           </View>
 
-          <Text style={[s.title, error ? s.titleError : null]}>{error ? 'NFC error' : copy.title}</Text>
+          <Text style={[s.title, error ? s.titleError : null]}>
+            {error ? (errorTitle ?? 'NFC error') : copy.title}
+          </Text>
           <Text style={s.hint}>{error ?? copy.hint}</Text>
 
           {contextLabel ? <Text style={s.contextLabel}>{contextLabel}</Text> : null}

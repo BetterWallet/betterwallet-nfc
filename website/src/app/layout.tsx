@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "BetterWallet — Tap to Pay",
-  description: "NFC-powered stablecoin deposits with passkeys. No address needed.",
+  title: "Better Wallet — DIY Offline Hardware Wallet",
+  description:
+    "Open-source, airgapped NFC hardware wallet with clear signing. Build it for around $40.",
 };
 
 export default function RootLayout({

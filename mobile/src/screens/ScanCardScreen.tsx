@@ -7,7 +7,7 @@ import { NfcTransferOverlay } from '../components/NfcTransferOverlay';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { parseSignedTxMessage, broadcastSignedResult } from '../services/broadcast';
 import { buildSignRequest } from '../services/ethTransaction';
-import { describeNfcError } from '../services/nfcError';
+import { describeFlowError } from '../services/nfcError';
 import { useSendFlow } from '../state/sendFlow';
 import { useWallet } from '../state/wallet';
 import { useHCE } from '../useHCE';
@@ -52,11 +52,11 @@ export function ScanCardScreen({ navigation }: Props) {
     return 'Getting ready to sign over NFC.';
   }, [state.stage]);
 
-  const nfcError = useMemo(() => {
+  const flowError = useMemo(() => {
     if (!localError) {
       return null;
     }
-    return describeNfcError(localError, transferPhase);
+    return describeFlowError(localError, transferPhase);
   }, [localError, transferPhase]);
 
   useEffect(() => {
@@ -169,7 +169,30 @@ export function ScanCardScreen({ navigation }: Props) {
           Hold your Better Wallet near the back of your phone to sign this transaction.
         </Text>
 
-        {state.stage === 'broadcasting' ? (
+        {localError ? (
+          state.stage === 'broadcasting' ? (
+            <View style={s.errorCard}>
+              <Text style={s.errorTitle}>{flowError?.title ?? 'Transfer failed'}</Text>
+              <Text style={s.errorBody}>{flowError?.guidance ?? localError}</Text>
+              {flowError?.isNfcError ? (
+                <Text style={s.errorRetryHint}>
+                  Hold your wallet near your phone and tap Retry to try again.
+                </Text>
+              ) : null}
+            </View>
+          ) : (
+            <NfcTransferOverlay
+              phase={transferPhase}
+              progress={transferProgress}
+              errorTitle={flowError?.title}
+              error={flowError?.guidance ?? localError}
+              onRetry={onRetry}
+              retryLabel={flowError?.actionLabel ?? 'Retry'}
+              onClose={onCancel}
+              closeLabel="Cancel"
+            />
+          )
+        ) : state.stage === 'broadcasting' ? (
           <View style={s.phaseCard}>
             <Text style={s.phase}>{phaseLabel}</Text>
             <Text style={s.phaseHint}>{phaseHint}</Text>
@@ -179,23 +202,12 @@ export function ScanCardScreen({ navigation }: Props) {
           <NfcTransferOverlay
             phase={transferPhase}
             progress={transferProgress}
-            error={localError ? `${nfcError?.title ?? 'NFC error'}\n${nfcError?.guidance ?? localError}` : null}
+            error={null}
             onRetry={onRetry}
-            retryLabel={nfcError?.actionLabel ?? 'Retry'}
             onClose={onCancel}
             closeLabel="Cancel"
           />
         )}
-
-        {localError && state.stage === 'broadcasting' ? (
-          <View style={s.errorCard}>
-            <Text style={s.errorTitle}>NFC error</Text>
-            <Text style={s.errorBody}>{localError}</Text>
-            <Text style={s.errorRetryHint}>
-              Hold your wallet near your phone and tap Retry to try again.
-            </Text>
-          </View>
-        ) : null}
 
         <View style={s.footer}>
           {localError && state.stage === 'broadcasting' ? (

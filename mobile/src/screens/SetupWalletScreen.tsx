@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NfcTransferOverlay } from '../components/NfcTransferOverlay';
-import { describeNfcError } from '../services/nfcError';
+import { describeFlowError } from '../services/nfcError';
 import { buildPairRequest, parsePairResponse } from '../services/pairing';
 import { useWallet } from '../state/wallet';
 import { useHCE } from '../useHCE';
@@ -51,11 +51,11 @@ export function SetupWalletScreen() {
   }, [phase]);
 
   const isActive = phase !== 'idle';
-  const nfcError = useMemo(() => {
+  const flowError = useMemo(() => {
     if (!error) {
       return null;
     }
-    return describeNfcError(error, transferPhase);
+    return describeFlowError(error, transferPhase);
   }, [error, transferPhase]);
 
   const runPairing = async () => {
@@ -169,9 +169,10 @@ export function SetupWalletScreen() {
             <NfcTransferOverlay
               phase={transferPhase}
               progress={transferProgress}
-              error={error ? `${nfcError?.title ?? 'NFC error'}\n${nfcError?.guidance ?? error}` : null}
+              errorTitle={flowError?.title}
+              error={error ? (flowError?.guidance ?? error) : null}
               onRetry={runPairing}
-              retryLabel={nfcError?.actionLabel ?? 'Retry'}
+              retryLabel={flowError?.actionLabel ?? 'Retry'}
             />
           )
         ) : null}
